@@ -1,0 +1,43 @@
+import registerSystem from './system.mjs';
+import registerStatus from './status.mjs';
+import registerThemeList from './theme-list.mjs';
+import registerThemeGet from './theme-get.mjs';
+import registerThemeSave from './theme-save.mjs';
+import registerThemeRemove from './theme-remove.mjs';
+import registerThemeImport from './theme-import.mjs';
+import registerThemeExport from './theme-export.mjs';
+import registerThemeApply from './theme-apply.mjs';
+import registerThemePause from './theme-pause.mjs';
+import registerThemeResume from './theme-resume.mjs';
+import registerThemeReset from './theme-reset.mjs';
+import registerThemeRestore from './theme-restore.mjs';
+import registerSettings from './settings.mjs';
+import registerSchedule from './schedule.mjs';
+import registerHost from './host.mjs';
+import registerFile from './file.mjs';
+import registerMedia from './media.mjs';
+import registerLog from './log.mjs';
+import registerHostProfile from './host-profile.mjs';
+
+export function registerHandlers(registry, ctx) {
+  registerSystem(registry, ctx);
+  registerStatus(registry, ctx);
+  registerThemeList(registry, ctx);
+  registerThemeGet(registry, ctx);
+  registerThemeSave(registry, ctx);
+  registerThemeRemove(registry, ctx);
+  registerThemeImport(registry, ctx);
+  registerThemeExport(registry, ctx);
+  registerThemeApply(registry, ctx);
+  registerThemePause(registry, ctx);
+  registerThemeResume(registry, ctx);
+  registerThemeReset(registry, ctx);
+  registerThemeRestore(registry, ctx);
+  registerSettings(registry, ctx);
+  registerSchedule(registry, ctx);
+  registerHost(registry, ctx);
+  registerFile(registry, ctx);
+  registerMedia(registry, ctx);
+  registerLog(registry, ctx);
+  registerHostProfile(registry, ctx);
+}

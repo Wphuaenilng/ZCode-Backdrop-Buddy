@@ -1,0 +1,31 @@
+# ---------- 构建产物 ----------
+/build/out/
+/build/out-next/
+/ui/dist/
+/src/BackdropBuddy.Shell/bin/
+/src/BackdropBuddy.Shell/obj/
+*.log
+
+# ---------- 依赖（npm ci 还原） ----------
+/ui/node_modules/
+
+# ---------- 本地运行时 ----------
+# node.exe 约 83 MB，作为便携运行时不入库；克隆后按 README 自行下载
+/runtime/node/node.exe
+
+# ---------- 设计与验收临时材料（截图、探针脚本、日志、nuget 缓存） ----------
+/.design/
+
+# ---------- 历史原型（非最终交付；要留档就删掉这两条） ----------
+/app/
+/index.html
+
+# ---------- IDE / 系统 ----------
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+.DS_Store

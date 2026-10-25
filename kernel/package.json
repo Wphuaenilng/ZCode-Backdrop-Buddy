@@ -1,0 +1,12 @@
+{
+  "name": "backdropbuddy-kernel",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": "22.22.2"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/kernel/frame.test.mjs ../../tests/kernel/router.test.mjs ../../tests/kernel/schema.test.mjs ../../tests/kernel/media.test.mjs ../../tests/kernel/store.test.mjs ../../tests/kernel/kernel.test.mjs ../../tests/kernel/modules.test.mjs ../../tests/kernel/powershell.test.mjs ../../tests/kernel/host.test.mjs ../../tests/kernel/pack.test.mjs ../../tests/kernel/backpressure.test.mjs"
+  }
+}

@@ -1,0 +1,25 @@
+<Window x:Class="BackdropBuddy.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="BackdropBuddy" Width="1440" Height="900"
+        MinWidth="1024" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="#F1F2F6">
+
+    <Grid>
+        <wv2:WebView2 x:Name="WebView" Visibility="Collapsed"/>
+
+        <Border x:Name="ErrorPanel" Background="#0F1115" Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="760">
+                <TextBlock Text="BackdropBuddy 无法启动" FontSize="24" FontWeight="SemiBold"
+                           Foreground="#E8E3D8" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="ErrorText" FontSize="13" Foreground="#C9A66B"
+                           TextWrapping="Wrap" Margin="0,14,0,0" TextAlignment="Center" LineHeight="22"/>
+                <TextBlock Text="日志：%LOCALAPPDATA%\BackdropBuddy\logs\shell.log"
+                           FontFamily="Consolas" FontSize="11" Foreground="#7C828C"
+                           Margin="0,18,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
