@@ -9,7 +9,9 @@ const DEFAULTS = {
   builtinOverrides: {},
   schedules: [],
   scheduleState: {},
-  zcodePath: null
+  zcodePath: null,
+  hostId: null,
+  hostThemes: {}
 };
 
 export class ConfigStore {

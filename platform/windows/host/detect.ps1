@@ -1,6 +1,8 @@
 param(
   [string]$ExePath = 'F:\shop\ZCode\ZCode.exe',
-  [int]$Port = 9229
+  [int]$Port = 9229,
+  [string]$AppxPackage = '',
+  [string]$ExeName = 'ChatGPT.exe'
 )
 
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -10,6 +12,20 @@ function Resolve-ProcessPath([int]$ProcessId) {
   try {
     $process = Get-Process -Id $ProcessId -ErrorAction Stop
     if ($process.Path) { return [System.IO.Path]::GetFullPath($process.Path) }
+  } catch { }
+  return $null
+}
+
+# MSIX 应用的安装路径带版本号会随更新漂移：按包名从 Appx 解析出当前真实 exe。
+function Resolve-AppxExe([string]$Package, [string]$Name) {
+  if (-not $Package) { return $null }
+  try {
+    $pkg = Get-AppxPackage -Name $Package -ErrorAction Stop | Sort-Object -Property Version -Descending | Select-Object -First 1
+    if (-not $pkg) { return $null }
+    foreach ($relative in @(('app\' + $Name), $Name)) {
+      $candidate = Join-Path -Path $pkg.InstallLocation -ChildPath $relative
+      if (Test-Path -LiteralPath $candidate) { return [System.IO.Path]::GetFullPath($candidate) }
+    }
   } catch { }
   return $null
 }
@@ -30,9 +46,16 @@ function Test-OwnedBy([int]$OwnerPid, [int]$AppPid) {
 }
 
 try {
-  $exe = [System.IO.Path]::GetFullPath($ExePath)
-  $name = [System.IO.Path]::GetFileName($exe)
-  $installed = Test-Path -LiteralPath $exe
+  # ExePath 为空或不存在时（内置 MSIX 宿主），按 -AppxPackage 解析真实安装路径
+  $exe = $null
+  if ($ExePath) {
+    try { $exe = [System.IO.Path]::GetFullPath($ExePath) } catch { $exe = $null }
+  }
+  if (($null -eq $exe -or -not (Test-Path -LiteralPath $exe)) -and $AppxPackage) {
+    $exe = Resolve-AppxExe $AppxPackage $ExeName
+  }
+  $name = $(if ($exe) { [System.IO.Path]::GetFileName($exe) } else { $ExeName })
+  $installed = [bool]$exe -and (Test-Path -LiteralPath $exe)
 
   $items = @()
   try {
@@ -143,13 +166,13 @@ try {
   $reason = $null
   $errorCode = $null
   if (-not $installed) {
-    $reason = "ZCode.exe not found: $exe"
+    $reason = "$name not found$(if ($exe) { ": $exe" } else { '' })"
     $errorCode = 'HOST_NOT_FOUND'
   } elseif (-not $selected) {
-    $reason = 'no running ZCode process found'
+    $reason = "no running $name process found"
     $errorCode = 'HOST_NOT_FOUND'
   } elseif (-not $portInfo.listening) {
-    $reason = "ZCode is running but debug port $Port is closed; fully quit ZCode and restart with --remote-debugging-port=$Port"
+    $reason = "$name is running but debug port $Port is closed; fully quit it and restart with --remote-debugging-port=$Port"
     $errorCode = 'HOST_NOT_READY'
   } elseif (-not $portInfo.loopbackOnly) {
     $reason = "debug port $Port is listening on a non-loopback address ($($portInfo.localAddress))"

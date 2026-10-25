@@ -12,6 +12,64 @@ function stamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
+// CSP 不允许 file: 的宿主（ChatGPT / VSCode 这类）改走页面内建 blob：
+// 字节从内核分块推进页面，拼成 Blob 后 createObjectURL，图片与视频都能过 blob: 的 CSP。
+const MEDIA_MIME = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+  '.mp4': 'video/mp4', '.webm': 'video/webm'
+};
+
+async function createPageBlobUrl(session, file, logger) {
+  const bytes = fs.readFileSync(file);
+  const mime = MEDIA_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+  const base64 = bytes.toString('base64');
+  const chunk = 3 * 1024 * 1024;
+  await session.evaluate('(() => { window.__bbBuf = []; })()');
+  for (let offset = 0; offset < base64.length; offset += chunk) {
+    await session.evaluate(`(() => { window.__bbBuf.push(${JSON.stringify(base64.slice(offset, offset + chunk))}); })()`,
+      { timeoutMs: 60000 });
+  }
+  const url = await session.evaluate(`(() => {
+    const parts = window.__bbBuf.map((chunkText) => {
+      const binary = atob(chunkText);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) array[i] = binary.charCodeAt(i);
+      return array;
+    });
+    window.__bbBuf = null;
+    const url = URL.createObjectURL(new Blob(parts, { type: ${JSON.stringify(mime)} }));
+    (window.__bbUrls = window.__bbUrls || []).push(url);
+    return url;
+  })()`, { timeoutMs: 60000 });
+  logger?.info('media blob created', { bytes: bytes.length, mime });
+  return url;
+}
+
+// 把注入 CSS / 表达式参数里的 file:// 媒体地址换成该窗口自己的 blob: 地址。
+// 每个渲染窗口都要各建一份（blob 只在本页面上下文里有效）。
+async function deliverWindowMedia(session, media, logger) {
+  if (!media || media.delivery !== 'blob') {
+    return { media: media ? { kind: media.kind, url: media.url, poster: media.posterUrl } : null, css: null };
+  }
+  const url = await createPageBlobUrl(session, media.file, logger);
+  let poster = null;
+  if (media.posterFile) poster = await createPageBlobUrl(session, media.posterFile, logger);
+  return {
+    media: { kind: media.kind, url, poster },
+    css: { from: `url("${media.url}")`, to: `url("${url}")` },
+    posterCss: media.posterUrl ? { from: `url("${media.posterUrl}")`, to: `url("${poster}")` } : null
+  };
+}
+
+// delivered = deliverWindowMedia 的返回值：{ css: {from,to}, posterCss: {from,to}|null }
+function applyMediaSubstitution(css, delivered) {
+  let out = css;
+  for (const rule of [delivered && delivered.css, delivered && delivered.posterCss]) {
+    if (rule && rule.from) out = out.split(rule.from).join(rule.to);
+  }
+  return out;
+}
+
 function normalizeColor(value) {
   const text = String(value || '').replace(/\s+/g, '').toLowerCase();
   const match = text.match(/^rgba?\(([^)]+)\)$/);
@@ -210,31 +268,33 @@ export function createHostAdapter({
   async function requireStatus({ force = true } = {}) {    const status = await detector.detect({ force });
     lastStatus = status;
 
-    if (!status.installed) throw fail('HOST_NOT_FOUND', `未找到 ZCode：${profile.exe}`, { retryable: true });
+    if (!status.installed) throw fail('HOST_NOT_FOUND', status.reason || `未找到 ${profile.name}`, { retryable: true });
     if (!status.running) {
       const code = status.errorCode === 'HOST_UNREACHABLE' ? 'HOST_UNREACHABLE' : 'HOST_NOT_FOUND';
-      throw fail(code, status.reason || 'ZCode 未运行', { retryable: true });
+      throw fail(code, status.reason || `${profile.name} 未运行`, { retryable: true });
     }
     if (!status.portOpen) throw fail('HOST_NOT_READY', status.reason || `调试端口 ${profile.port} 未开放`, { retryable: true });
     if (!status.ownership || status.ownership.verified !== true) {
       throw fail('HOST_UNREACHABLE', status.reason || '调试端口归属校验失败', { retryable: true });
     }
-    if (!status.supported) throw fail('HOST_UNSUPPORTED', status.supportedReason || 'ZCode 版本不受支持');
-    if (!status.ready || !status.target) throw fail('HOST_NOT_READY', status.reason || 'ZCode 页面尚未就绪', { retryable: true });
+    if (!status.supported) throw fail('HOST_UNSUPPORTED', status.supportedReason || `${profile.name} 版本不受支持`);
+    if (!status.ready || !status.target) throw fail('HOST_NOT_READY', status.reason || `${profile.name} 页面尚未就绪`, { retryable: true });
     return status;
   }
 
   async function restart({ reapply = true } = {}) {
     let result;
     try {
+      const args = ['-ExePath', profile.exe || '', '-Port', String(profile.port)];
+      if (profile.appxPackage) args.push('-AppxPackage', profile.appxPackage, '-ExeName', profile.appxExe || 'ChatGPT.exe');
       result = await runPowerShellJson('host/restart.ps1', {
         appRoot,
-        args: ['-ExePath', profile.exe, '-Port', String(profile.port)],
+        args,
         timeout: 50000
       });
     } catch (error) {
       logger?.warn('host restart failed', { message: error.message, code: error.code });
-      throw fail('HOST_RESTART_FAILED', `重启 ZCode 失败：${error.message}`, {
+      throw fail('HOST_RESTART_FAILED', `重启 ${profile.name} 失败：${error.message}`, {
         retryable: true,
         details: { code: error.code || null, ...(error.details ? { cause: error.details } : {}) }
       });
@@ -293,6 +353,7 @@ export function createHostAdapter({
     if (stat.size > 300 * 1024 * 1024) {
       throw fail('MEDIA_INVALID', `主题媒体文件过大：${stat.size} bytes`);
     }
+    const delivery = profile.mediaDelivery === 'blob' ? 'blob' : 'file';
 
     let posterUrl = null;
     let posterFile = null;
@@ -316,6 +377,7 @@ export function createHostAdapter({
         sha256: null,
         posterFile,
         posterUrl: null,
+        delivery,
         degradedFrom: 'video'
       };
     }
@@ -327,7 +389,8 @@ export function createHostAdapter({
       bytes: stat.size,
       sha256: theme.media.sha256 || null,
       posterFile,
-      posterUrl
+      posterUrl,
+      delivery
     };
   }
 
@@ -483,7 +546,7 @@ export function createHostAdapter({
     if (!baseline) {
       baseline = await takeBaseline(status);
       if (!baseline || !baseline.ready) {
-        throw fail('HOST_NOT_READY', 'ZCode 页面在注入前未就绪');
+        throw fail('HOST_NOT_READY', `${profile.name} 页面在注入前未就绪`);
       }
     }
 
@@ -500,7 +563,7 @@ export function createHostAdapter({
       const capturedAt = new Date().toISOString();
       const data = {
         schema: 'backdropbuddy.snapshot/1',
-        host: 'zcode',
+        host: profile.id,
         capturedAt,
         themeId: theme.id,
         themeName: theme.name,
@@ -520,10 +583,13 @@ export function createHostAdapter({
     let outcomes;
     try {
       outcomes = await withTargets(status, async (session) => {
+        // blob 交付：CSS 里写的是 file:// 地址（白名单按它校验），注入前换成该窗口的 blob: 地址
+        const delivered = await deliverWindowMedia(session, media, logger);
+        const windowCss = delivered.css ? applyMediaSubstitution(css, delivered) : css;
         await session.evaluate(injectionExpression({
-          css,
+          css: windowCss,
           themeId: theme.id,
-          media: media ? { kind: media.kind, url: media.url, poster: media.posterUrl } : null
+          media: delivered.media
         }), { timeoutMs: 12000 });
         return session.evaluate(verifyExpression());
       });
@@ -714,7 +780,7 @@ export function createHostAdapter({
 
     const hostRunning = !!(status && status.running);
     if (state && hostRunning && (!status.ready || !status.target)) {
-      throw fail('HOST_NOT_READY', status.reason || '无法连接 ZCode 页面，未执行恢复', { retryable: true });
+      throw fail('HOST_NOT_READY', status.reason || `无法连接 ${profile.name} 页面，未执行恢复`, { retryable: true });
     }
 
     let verification = null;
@@ -796,7 +862,7 @@ export function createHostAdapter({
       try {
         await writeJsonRecord('restore', `restore-${stamp()}-${state.theme.id}.json`, {
           schema: 'backdropbuddy.restore/1',
-          host: 'zcode',
+          host: profile.id,
           restoredAt: new Date().toISOString(),
           themeId: state.theme.id,
           target: result.target,
@@ -875,10 +941,12 @@ export function createHostAdapter({
       });
       const session = await openSession(entry.target);
       try {
+        const delivered = await deliverWindowMedia(session, media, logger);
+        const windowCss = delivered.css ? applyMediaSubstitution(css, delivered) : css;
         await session.evaluate(injectionExpression({
-          css,
+          css: windowCss,
           themeId: state.theme.id,
-          media: media ? { kind: media.kind, url: media.url, poster: media.posterUrl } : null
+          media: delivered.media
         }), { timeoutMs: 12000 });
         const verified = await session.evaluate(verifyExpression());
         const ok = verificationOf(verified, {
@@ -1017,12 +1085,12 @@ export function createHostAdapter({
 
     if (!status.running) {
       return activeThemeId
-        ? recordAudit({ verdict: 'host-offline', reason: 'ZCode 未运行，主题记录保留', themeId: activeThemeId, pointer })
-        : recordAudit({ verdict: 'clean', reason: 'ZCode 未运行', pointer });
+        ? recordAudit({ verdict: 'host-offline', reason: `${profile.name} 未运行，主题记录保留`, themeId: activeThemeId, pointer })
+        : recordAudit({ verdict: 'clean', reason: `${profile.name} 未运行`, pointer });
     }
 
     if (!status.ready || !status.target) {
-      return recordAudit({ verdict: 'host-unready', reason: status.reason || 'ZCode 页面尚未就绪', themeId: activeThemeId, pointer });
+      return recordAudit({ verdict: 'host-unready', reason: status.reason || `${profile.name} 页面尚未就绪`, themeId: activeThemeId, pointer });
     }
 
     lastSync = await syncWindows(status);
@@ -1032,8 +1100,8 @@ export function createHostAdapter({
       return recordAudit({
         verdict: mismatch ? 'mismatch-layer' : 'stale-pointer',
         reason: mismatch
-          ? `ZCode 上是另一个主题的残留（${outcome.pageThemeId || '未知'}），本机记录已清除`
-          : '上次应用的主题已不在 ZCode 上（宿主重启或页面刷新），本机记录已清除',
+          ? `${profile.name} 上是另一个主题的残留（${outcome.pageThemeId || '未知'}），本机记录已清除`
+          : `上次应用的主题已不在 ${profile.name} 上（宿主重启或页面刷新），本机记录已清除`,
         action: 'reapply',
         themeId: activeThemeId,
         previousThemeId: outcome.pageThemeId || null,
@@ -1075,7 +1143,7 @@ export function createHostAdapter({
     if (!activeThemeId && themed) {
       return recordAudit({
         verdict: 'orphan-layer',
-        reason: `ZCode 上仍保留着主题「${themed}」的皮肤，但本机没有活动主题记录`,
+        reason: `${profile.name} 上仍保留着主题「${themed}」的皮肤，但本机没有活动主题记录`,
         action: 'restore',
         themeId: themed,
         page: pageInfo,
@@ -1084,7 +1152,7 @@ export function createHostAdapter({
     }
 
     if (!activeThemeId) {
-      return recordAudit({ verdict: 'clean', reason: 'ZCode 干净，无残留注入', page: pageInfo, pointer });
+      return recordAudit({ verdict: 'clean', reason: `${profile.name} 干净，无残留注入`, page: pageInfo, pointer });
     }
 
     if (themed === activeThemeId) {
@@ -1094,7 +1162,7 @@ export function createHostAdapter({
     if (themed) {
       return recordAudit({
         verdict: 'mismatch-layer',
-        reason: `ZCode 上的主题（${themed}）与本机记录（${activeThemeId}）不一致`,
+        reason: `${profile.name} 上的主题（${themed}）与本机记录（${activeThemeId}）不一致`,
         action: 'reapply',
         themeId: activeThemeId,
         previousThemeId: themed,
@@ -1105,7 +1173,7 @@ export function createHostAdapter({
 
     return recordAudit({
       verdict: 'stale-pointer',
-      reason: '上次应用的主题已不在 ZCode 上（宿主重启或页面刷新）',
+      reason: `上次应用的主题已不在 ${profile.name} 上（宿主重启或页面刷新）`,
       action: 'reapply',
       themeId: activeThemeId,
       page: pageInfo,

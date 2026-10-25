@@ -94,6 +94,9 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [toast, setToast] = useState(null);
   const [host, setHost] = useState({ status: 'checking', info: null });
+  const [hostList, setHostList] = useState([]);
+  const [activeHost, setActiveHost] = useState(null);
+  const [hostSwitching, setHostSwitching] = useState(false);
   const [kernel, setKernel] = useState({ status: 'checking', pid: null, capabilities: [] });
   const [recovery, setRecovery] = useState(null);
   const [recoveryDismissed, setRecoveryDismissed] = useState(null);
@@ -203,6 +206,15 @@ export default function App() {
     return themes;
   }, [allThemes, filters]);
 
+  // 调度数据落 state：启动引导 effect（下方）与规则保存都会用，先声明
+  const setScheduleFrom = useCallback((data) => {
+    setSchedule({
+      rules: Array.isArray(data?.rules) ? data.rules : [],
+      nextTriggerAt: data?.nextTriggerAt || null,
+      wakeAt: data?.wakeAt || null
+    });
+  }, []);
+
   useEffect(() => {
     let alive = true;
 
@@ -245,6 +257,9 @@ export default function App() {
         if (scheduled.ok) setScheduleFrom(scheduled.data);
       }
 
+      // 首屏可交互（主题列表与偏好已就绪）：通知壳收掉启动窗；宿主探测等在后台继续补。
+      if (typeof bridge.notifyReady === 'function') bridge.notifyReady();
+
       const status = await bridge.request('status.get');
       if (!alive) return;
       if (status.ok) {
@@ -252,6 +267,14 @@ export default function App() {
         setRunningId(applied && applied.themeId ? applied.themeId : null);
         setPaused(!!status.data?.paused);
         if (status.data?.host?.recovery) setRecovery(status.data.host.recovery);
+        if (status.data?.hostId) setActiveHost(status.data.hostId);
+      }
+
+      const hostList = await bridge.request('host.profile.list');
+      if (!alive) return;
+      if (hostList.ok) {
+        setHostList(Array.isArray(hostList.data?.hosts) ? hostList.data.hosts : []);
+        setActiveHost((current) => hostList.data?.active || current);
       }
 
       const detect = await bridge.request('host.detect');
@@ -280,6 +303,22 @@ export default function App() {
     const offRecovery = bridge.on('recovery.status', (data) => {
       if (!alive || !data) return;
       setRecovery(data);
+    });
+
+    // 宿主切换（host.use）后：同步当前宿主、宿主状态与正在跑的主题
+    const offHostSwitched = bridge.on('host.switched', (data) => {
+      if (!alive || !data) return;
+      setActiveHost(data.to);
+      bridge.request('status.get').then((result) => {
+        if (!alive || !result.ok) return;
+        const applied = result.data?.theme;
+        setRunningId(applied && applied.themeId ? applied.themeId : null);
+        setPaused(!!result.data?.paused);
+      });
+      bridge.request('host.detect').then((result) => {
+        if (!alive) return;
+        if (result.ok) applyHostInfo(result.data);
+      });
     });
 
     const offSchedule = bridge.on('schedule.fired', (data) => {
@@ -316,9 +355,11 @@ export default function App() {
       offRecovery();
       offSchedule();
       offKernel();
+      offHostSwitched();
     };
   }, [bridge, native, refreshThemes, applyHostInfo]);
 
+  // 内核调用的统一包装：出错时也返回失败信封，调用方不用 try/catch
   const callKernel = useCallback(async (method, params, timeoutMs) => {
     try {
       return await bridge.request(method, params || {}, timeoutMs);
@@ -326,6 +367,27 @@ export default function App() {
       return { ok: false, error: { code: 'BRIDGE_ERROR', message: String(error) } };
     }
   }, [bridge]);
+
+  // 一键切换宿主：切换后内核会自动把这个宿主上次的壁纸补回去（如果有记忆）
+  const switchActiveHost = useCallback(async (id) => {
+    if (!native || !id || hostSwitching) return;
+    setHostSwitching(true);
+    try {
+      const result = await callKernel('host.use', { id }, 90000);
+      if (!result.ok) {
+        showToast('切换宿主失败：' + (result.error?.message || result.error?.code));
+        return;
+      }
+      setActiveHost(result.data?.hostId || id);
+      const list = await callKernel('host.profile.list');
+      if (list.ok) setHostList(Array.isArray(list.data?.hosts) ? list.data.hosts : []);
+      showToast(result.data?.appliedTheme
+        ? `已切到 ${result.data.name}，并换上它上次的壁纸`
+        : `已切到 ${result.data.name}`);
+    } finally {
+      setHostSwitching(false);
+    }
+  }, [native, hostSwitching, callKernel, showToast]);
 
   const setFiltersSafe = useCallback((patch) => {
     setFilters((current) => ({ ...current, ...patch }));
@@ -393,14 +455,6 @@ export default function App() {
     return true;
   }, [native, bridge, showToast]);
 
-  const setScheduleFrom = useCallback((data) => {
-    setSchedule({
-      rules: Array.isArray(data?.rules) ? data.rules : [],
-      nextTriggerAt: data?.nextTriggerAt || null,
-      wakeAt: data?.wakeAt || null
-    });
-  }, []);
-
   const saveRule = useCallback(async (rule) => {
     if (!native) { showToast('浏览器预览里不能改调度规则'); return false; }
 
@@ -459,6 +513,9 @@ export default function App() {
     return false;
   }, [themeParams, callKernel, showToast, native, bridge, applyHostInfo]);
 
+  // 当前宿主的显示名：重启确认文案与顶栏共用，须在 confirmRestartApply 之前声明
+  const activeHostName = hostList.find((item) => item.id === activeHost)?.name || host?.info?.hostName || '宿主';
+
   const confirmRestartApply = useCallback(async () => {
     if (!restartPrompt || applyBusy) return;
 
@@ -469,18 +526,18 @@ export default function App() {
     }
 
     setApplyBusy(true);
-    showToast(restartPrompt.running ? '正在重启 ZCode…' : '正在启动 ZCode…');
+    showToast(restartPrompt.running ? `正在重启 ${activeHostName}…` : `正在启动 ${activeHostName}…`);
     try {
       const result = await callKernel('host.restart', { reapply: false }, 60000);
       if (!result.ok) {
-        showToast('ZCode 启动失败：' + (result.error?.message || result.error?.code || '未知错误'));
+        showToast(`${activeHostName} 启动失败：` + (result.error?.message || result.error?.code || '未知错误'));
         return;
       }
 
       const info = result.data?.status;
       if (info) applyHostInfo(info);
       if (!info?.safeToInject) {
-        showToast('ZCode 已启动，但页面尚未就绪，请稍后重试');
+        showToast(`${activeHostName} 已启动，但页面尚未就绪，请稍后重试`);
         return;
       }
 
@@ -489,7 +546,7 @@ export default function App() {
       setApplyBusy(false);
       setRestartPrompt(null);
     }
-  }, [restartPrompt, applyBusy, findTheme, selectedTheme, callKernel, showToast, applyHostInfo, performApply]);
+  }, [restartPrompt, applyBusy, findTheme, selectedTheme, callKernel, showToast, applyHostInfo, performApply, activeHostName]);
 
   const persistOverrides = useCallback((overrides) => {
     if (!native) return;
@@ -1083,6 +1140,12 @@ export default function App() {
             onRestore={restoreSkin}
             native={native}
             applyBusy={applyBusy}
+            hosts={hostList}
+            activeHost={activeHost}
+            hostSwitching={hostSwitching}
+            hostName={activeHostName}
+            onSwitchHost={switchActiveHost}
+            onOpenHostWizard={() => setView('host')}
             onAddImage={() => { setDraft(blankDraft()); setView('import'); }}
             onImportPack={importPack}
             onPickPack={pickPack}
@@ -1142,10 +1205,10 @@ export default function App() {
       {restartPrompt ? (
         <ConfirmDialog
           testId="restart-confirm"
-          title={restartPrompt.running ? '需要重启 ZCode' : '需要启动 ZCode'}
+          title={restartPrompt.running ? `需要重启 ${activeHostName}` : `需要启动 ${activeHostName}`}
           message={restartPrompt.running
-            ? `应用「${promptName}」需要 ZCode 开放调试端口。将关闭当前 ZCode 窗口并自动重启，完成后自动应用这张壁纸；不会修改 ZCode 的安装文件。`
-            : `应用「${promptName}」需要先启动 ZCode 并开放调试端口。将自动启动 ZCode，完成后自动应用这张壁纸；不会修改 ZCode 的安装文件。`}
+            ? `应用「${promptName}」需要 ${activeHostName} 开放调试端口。将关闭当前 ${activeHostName} 窗口并自动重启，完成后自动应用这张壁纸；不会修改 ${activeHostName} 的安装文件。`
+            : `应用「${promptName}」需要先启动 ${activeHostName} 并开放调试端口。将自动启动 ${activeHostName}，完成后自动应用这张壁纸；不会修改 ${activeHostName} 的安装文件。`}
           confirmLabel={restartPrompt.running ? '重启并应用' : '启动并应用'}
           busy={applyBusy}
           onConfirm={confirmRestartApply}

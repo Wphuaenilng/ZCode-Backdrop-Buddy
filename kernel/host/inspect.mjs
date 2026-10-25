@@ -48,6 +48,39 @@ export function inspectExpression() {
     for (const cls of htmlClasses) if (/dark|light|theme/i.test(cls)) darkCandidates.push({ target: 'html', cls });
     for (const cls of bodyClasses) if (/dark|light|theme/i.test(cls)) darkCandidates.push({ target: 'body', cls });
 
+    // 属性式明暗标记（ChatGPT 这类 html[data-theme="dark"]）：class 候选抓不到，单独收集
+    const darkAttrCandidates = [];
+    for (const pair of [['html', document.documentElement], ['body', document.body]]) {
+      if (!pair[1]) continue;
+      for (const attr of pair[1].getAttributeNames ? pair[1].getAttributeNames() : []) {
+        if (!/^data-(theme|mode|color-scheme|appearance|dark)$/.test(attr)) continue;
+        const value = pair[1].getAttribute(attr);
+        if (value) darkAttrCandidates.push({ target: pair[0], attr, value });
+      }
+    }
+
+    // CSP 媒体能力：file: 被挡时向导要建议 blob 交付
+    const cspText = (() => {
+      const meta = document.querySelector('meta[http-equiv="Content-Security-Policy" i]');
+      return meta ? meta.content : '';
+    })();
+    const directive = (name) => {
+      if (!cspText) return '';
+      const match = cspText.match(new RegExp(name + '[^;]*'));
+      return match ? match[0] : '';
+    };
+    const styleSrc = directive('style-src');
+    const imgSrc = directive('img-src');
+    const mediaSrc = directive('media-src');
+    const csp = {
+      present: !!cspText,
+      inlineStyle: !styleSrc || styleSrc.includes("'unsafe-inline'") || styleSrc.includes("'self'"),
+      fileImage: !imgSrc || imgSrc.includes('file:'),
+      blobImage: !imgSrc || imgSrc.includes('blob:'),
+      fileVideo: !mediaSrc || mediaSrc.includes('file:'),
+      blobVideo: !mediaSrc || mediaSrc.includes('blob:')
+    };
+
     const readyCandidates = [];
     for (const sel of ['#root', '#app', '.app-container', '.App', 'main', '[role="application"]', 'body > div']) {
       try {
@@ -63,6 +96,8 @@ export function inspectExpression() {
       title: document.title,
       version: (document.title.match(/([0-9]+\\.[0-9]+\\.[0-9]+)/) || [])[1] || null,
       darkCandidates,
+      darkAttrCandidates,
+      csp,
       readyCandidates,
       vars: vars.slice(0, ${MAX_VARS}),
       surfaces: surfaces.slice(0, ${MAX_SURFACES})

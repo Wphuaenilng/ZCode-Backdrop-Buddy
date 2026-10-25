@@ -8,10 +8,14 @@ export const DEFAULT_IDS = Object.freeze({
 
 const target = (p) => (p.tokenTarget === 'body' ? 'document.body' : 'document.documentElement');
 const themedTarget = (p) => (p.themedTarget === 'body' ? 'document.body' : 'document.documentElement');
-// 页面当前是深色还是浅色：校验配色必须按"此刻"的模式取，不能沿用注入那一刻的
-const darkProbe = (p) => (p.darkClass
-  ? `${p.darkTarget === 'body' ? 'document.body' : 'document.documentElement'}.classList.contains('${p.darkClass}')`
-  : 'null');
+// 页面当前是深色还是浅色：校验配色必须按"此刻"的模式取，不能沿用注入那一刻的。
+// class 形态（.dark）与属性形态（html[data-theme="dark"]，ChatGPT 这类）都支持。
+const darkProbe = (p) => {
+  const el = (name) => (p.darkTarget === 'body' ? 'document.body' : name);
+  if (p.darkAttr) return `${el('document.documentElement')}.getAttribute('${p.darkAttr}') === '${p.darkAttrValue || 'dark'}'`;
+  if (p.darkClass) return `${el('document.documentElement')}.classList.contains('${p.darkClass}')`;
+  return 'null';
+};
 
 export function fingerprintExpression(p) {
   return `(() => {
@@ -28,7 +32,7 @@ export function fingerprintExpression(p) {
       testidCount: ${p.testidSelector ? `document.querySelectorAll('${p.testidSelector}').length` : '0'},
       htmlClass: html.className,
       bodyClass: body.className,
-      darkClass: ${p.darkClass ? `${p.darkTarget === 'body' ? 'body' : 'html'}.classList.contains('${p.darkClass}')` : 'false'},
+      darkClass: ${darkProbe(p) === 'null' ? 'false' : darkProbe(p)},
       backgroundToken: cs.getPropertyValue('${p.backgroundVar}').trim(),
       foregroundToken: cs.getPropertyValue('${p.foregroundVar}').trim(),
       version: ${p.versionExpression || 'null'}
@@ -114,6 +118,18 @@ export function injectionExpression(p, { css, themeId, media }) {
       video.style.display = '';
       const playing = video.play();
       if (playing && playing.catch) playing.catch(() => {});
+      // Chromium 在页面隐藏（窗口最小化/被完全遮挡）时会暂停视频，恢复可见后又不自动续播；
+      // 挂一个恢复监听：窗口回到前台时接着放。监听只挂一次，元素没了自然空转。
+      if (!document.__bbVisResume) {
+        document.__bbVisResume = true;
+        document.addEventListener('visibilitychange', () => {
+          const el = document.getElementById(VIDEO_ID);
+          if (!document.hidden && el && !el.ended && el.paused) {
+            const resume = el.play();
+            if (resume && resume.catch) resume.catch(() => {});
+          }
+        });
+      }
     } else if (video) {
       video.pause();
       video.removeAttribute('src');
@@ -206,6 +222,10 @@ export function removeExpression(p) {
     const style = document.getElementById('${p.styleId}');
     if (style) style.remove();
     ${themedTarget(p)}.removeAttribute('data-bb-theme');
+    if (window.__bbUrls) {
+      for (const url of window.__bbUrls) { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }
+      window.__bbUrls = null;
+    }
     const cs = getComputedStyle(${target(p)});
     return {
       style: !!document.getElementById('${p.styleId}'),
@@ -220,6 +240,8 @@ export function removeExpression(p) {
 }
 
 // 通用背景层/视频层规则：宿主 CSS 只负责"让界面透明"，这两段负责"底下放什么"。
+// 注意：视频主题时层不能有任何底色——视频元素插在层之前、同为 z-index:0，
+// 层上哪怕一层 #000 也会整面盖住视频（视频主题黑屏就是这里来的）。
 export function backdropRules({ p, imageLine, position, scale, blur, dim, safe }) {
   return [
     'html, body { background: transparent !important; }',

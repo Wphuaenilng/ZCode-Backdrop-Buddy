@@ -38,8 +38,9 @@ try {
   $urlPattern = [regex]'url\s*\(\s*([^)]*?)\s*\)'
   foreach ($match in $urlPattern.Matches($css)) {
     $value = $match.Groups[1].Value.Trim()
-    if ($value -notmatch '^"file:///[^"]+\.(jpg|jpeg|png|webp|mp4|webm)"$') {
-      $errors += "url must be a quoted local media file: $value"
+    # file:/// = 本地主题媒体；blob: = 页面内建 Blob 的句柄（CSP 不允许 file: 的宿主用它），指不到远程内容
+    if ($value -notmatch '^"file:///[^"]+\.(jpg|jpeg|png|webp|mp4|webm)"$' -and $value -notmatch '^"blob:[^"\s]{1,200}"$') {
+      $errors += "url must be a quoted local media file or page blob: $value"
     }
   }
 

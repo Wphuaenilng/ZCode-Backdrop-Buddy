@@ -58,6 +58,12 @@ export async function applyThemeState(ctx, { themeId, name, params }) {
     try {
       ctx.config.set({ selectedThemeId: theme.id, lastAppliedThemeId: theme.id });
     } catch { /* config persistence must not block a successful apply */ }
+    // 每宿主壁纸记忆：切回这个宿主时自动换回它上次的壁纸（两个软件可以各用各的）
+    try {
+      const hostId = ctx.hostProfile ? ctx.hostProfile.id : 'zcode';
+      const prefs = ctx.config.get();
+      ctx.config.set({ hostThemes: { ...(prefs.hostThemes || {}), [hostId]: theme.id } });
+    } catch { /* 记忆失败不影响应用 */ }
     emitStatus(ctx, {
       theme,
       paused: false,

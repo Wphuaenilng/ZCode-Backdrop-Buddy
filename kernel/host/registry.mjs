@@ -1,12 +1,14 @@
 import { resolveProfile as resolveZcode } from './zcode.mjs';
-import { resolveProfile as resolveObsidian } from './obsidian.mjs';
+import { resolveProfile as resolveChatgpt } from './chatgpt.mjs';
 import { createGenericProfile } from './generic.mjs';
 import { loadUserProfiles } from './user-profiles.mjs';
 
 // 宿主注册表：内置宿主 + 用户通过接入向导保存的 profile（纯数据）。
+// 两套映射并存：内置的是逐宿主手调映射（ZCode / ChatGPT），向导通用映射（generic.mjs）
+// 负责其余任意 agent 应用。同 id 的用户 profile 让位给内置——旧向导入的 chatgpt 升级即生效。
 const BUILTIN = Object.freeze({
   zcode: { id: 'zcode', name: 'ZCode', resolve: resolveZcode },
-  obsidian: { id: 'obsidian', name: 'Obsidian', resolve: resolveObsidian }
+  chatgpt: { id: 'chatgpt', name: 'ChatGPT', resolve: resolveChatgpt }
 });
 
 export function createRegistry({ hostsDir = null } = {}) {
@@ -23,7 +25,9 @@ export function createRegistry({ hostsDir = null } = {}) {
   return {
     list() {
       const builtins = Object.values(BUILTIN).map((host) => ({ id: host.id, name: host.name, source: 'builtin' }));
-      const custom = [...users.values()].map((data) => ({ id: data.id, name: data.name, source: 'user', port: data.port }));
+      const custom = [...users.values()]
+        .filter((data) => !BUILTIN[data.id])
+        .map((data) => ({ id: data.id, name: data.name, source: 'user', port: data.port }));
       return [...builtins, ...custom];
     },
     get(id) {

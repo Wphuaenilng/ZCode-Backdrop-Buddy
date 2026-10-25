@@ -9,12 +9,12 @@ const SOURCES = [
   { value: 'my', label: '我的' }
 ];
 
-const RECOVERY_COPY = {
-  'orphan-layer': { title: 'ZCode 上还留着上次的皮肤', action: '恢复原貌' },
-  'stale-pointer': { title: '上次的主题已不在 ZCode 上', action: '重新应用' },
-  'mismatch-layer': { title: 'ZCode 上的主题与本机记录不一致', action: '重新应用' },
+const RECOVERY_COPY = (hostName) => ({
+  'orphan-layer': { title: `${hostName} 上还留着上次的皮肤`, action: '恢复原貌' },
+  'stale-pointer': { title: `上次的主题已不在 ${hostName} 上`, action: '重新应用' },
+  'mismatch-layer': { title: `${hostName} 上的主题与本机记录不一致`, action: '重新应用' },
   'port-conflict': { title: '调试端口被占用', action: '重新检测' }
-};
+});
 
 export default function ConsoleView({
   themes,
@@ -33,6 +33,12 @@ export default function ConsoleView({
   onRestore,
   native,
   applyBusy,
+  hosts,
+  activeHost,
+  hostSwitching,
+  hostName,
+  onSwitchHost,
+  onOpenHostWizard,
   onAddImage,
   onImportPack,
   onPickPack,
@@ -47,7 +53,7 @@ export default function ConsoleView({
 }) {
   const packInput = useRef(null);
   const runningId = runningTheme ? runningTheme.id : null;
-  const recoveryCopy = recovery ? (RECOVERY_COPY[recovery.verdict] || null) : null;
+  const recoveryCopy = recovery ? (RECOVERY_COPY(hostName || '宿主')[recovery.verdict] || null) : null;
 
   useEffect(() => {
     if (!selectedId) return;
@@ -62,6 +68,27 @@ export default function ConsoleView({
 
   return (
     <section className="view" data-testid="view-console">
+      {native && Array.isArray(hosts) && hosts.length ? (
+        <div className="host-switcher" data-testid="host-switcher">
+          <span className="host-switcher-label">{hostSwitching ? '切换中…' : '宿主'}</span>
+          <div className="wchips">
+            {hosts.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`wchip${item.id === activeHost ? ' on' : ''}`}
+                disabled={hostSwitching || item.id === activeHost}
+                onClick={() => onSwitchHost && onSwitchHost(item.id)}
+                data-testid={`host-chip-${item.id}`}
+                title={item.source === 'user' ? '向导接入的宿主，每个宿主各记各的壁纸' : '内置宿主'}
+              >
+                {item.name}
+              </button>
+            ))}
+            <button type="button" className="wchip add" onClick={onOpenHostWizard} data-testid="host-chip-add">＋ 接入</button>
+          </div>
+        </div>
+      ) : null}
       {recoveryCopy ? (
         <div
           className={`notice${recovery.verdict === 'port-conflict' ? ' conflict' : ''}`}

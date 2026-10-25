@@ -513,7 +513,7 @@ P7 打包
 
 ### 9.2 待确认
 
-- **宿主范围**：已 profile 化——默认 ZCode，另内置 Obsidian 宿主，自建宿主走「接入宿主」向导（含无 CSS 变量的 Tauri/WebView2 宿主，已在 Desktop AI Pet 上跑通，见 PLAN-v2-expansion §2.6）。其他 Electron/Tauri 应用仍需各自做一次只读探针并建 profile，未逐个验证。
+- **宿主范围**：2026-10-25 起方向收窄到 agent 应用——内置宿主只保留 ZCode（Obsidian 已下线，`BACKDROPBUDDY_HOST=obsidian` 报 unknown host），自建宿主一律走「接入宿主」向导（含无 CSS 变量的 Tauri/WebView2 宿主，已在 Desktop AI Pet 上跑通，见 PLAN-v2-expansion §2.6）。VSCode 与 ChatGPT 桌面版探针/试穿已完成、接入待扩展（§2.10 / §2.11）。
 - **卸载策略**：已实现并实测——默认保留用户主题与设置；交互式卸载会询问是否同时删除；静默卸载可加 `/PURGEDATA=1`；卸载器尊重 `BACKDROPBUDDY_DATA_DIR`。
 - **签名**：V1 未做代码/脚本签名，安装包 `Authenticode=NotSigned`，SmartScreen 会提示“未知发布者”；建议对外分发前补签。
 - **主题包格式**：已选 `.bbskin`（zip：`pack.json` + `theme.json` + 媒体/缩略图）；JSON 仅作兼容配置导出。

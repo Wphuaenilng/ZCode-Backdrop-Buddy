@@ -86,10 +86,10 @@ export async function openCdp(statusOrTarget, { timeoutMs = 5000 } = {}) {
     ? statusOrTarget
     : statusOrTarget && statusOrTarget.target;
   const wsUrl = target && target.wsUrl;
-  if (!wsUrl) throw new AppError('HOST_NOT_READY', 'ZCode 调试目标不可用', { retryable: true });
+  if (!wsUrl) throw new AppError('HOST_NOT_READY', '宿主调试目标不可用', { retryable: true });
 
   let parsed;
-  try { parsed = new URL(wsUrl); } catch { throw new AppError('HOST_UNREACHABLE', 'ZCode 调试地址格式无效'); }
+  try { parsed = new URL(wsUrl); } catch { throw new AppError('HOST_UNREACHABLE', '宿主调试地址格式无效'); }
   if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(parsed.hostname)) {
     throw new AppError('HOST_UNREACHABLE', `拒绝连接非回环调试地址：${parsed.hostname}`);
   }
@@ -97,7 +97,7 @@ export async function openCdp(statusOrTarget, { timeoutMs = 5000 } = {}) {
   try {
     return await CdpSession.open(wsUrl, { timeoutMs });
   } catch (error) {
-    throw new AppError('HOST_UNREACHABLE', `无法连接 ZCode 调试页面：${error.message}`, { retryable: true });
+    throw new AppError('HOST_UNREACHABLE', `无法连接宿主调试页面：${error.message}`, { retryable: true });
   }
 }
 
@@ -173,7 +173,7 @@ function ownershipMessage(profile, hostInfo) {
   }
   const selected = hostInfo.selected;
   if (port.listening && selected && port.pid && port.pid !== selected.pid) {
-    return `端口 ${profile.port} 的 PID (${port.pid}) 与 ZCode 主进程 (${selected.pid}) 不一致。`;
+    return `端口 ${profile.port} 的 PID (${port.pid}) 与 ${profile.name} 主进程 (${selected.pid}) 不一致。`;
   }
   return `端口归属校验失败：${hostInfo.reason || '原因未知'}`;
 }
@@ -198,9 +198,11 @@ export function createDetector({ profile = ZCODE_PROFILE, appRoot, timeoutMs = 1
     let hostInfo;
     let platformError = null;
     try {
+      const args = ['-ExePath', profile.exe || '', '-Port', String(profile.port)];
+      if (profile.appxPackage) args.push('-AppxPackage', profile.appxPackage, '-ExeName', profile.appxExe || 'ChatGPT.exe');
       hostInfo = await runPowerShellJson('host/detect.ps1', {
         appRoot,
-        args: ['-ExePath', profile.exe, '-Port', profile.port],
+        args,
         timeout: 15000
       });
     } catch (error) {
@@ -264,19 +266,23 @@ export function createDetector({ profile = ZCODE_PROFILE, appRoot, timeoutMs = 1
     const pageReady = !!(pageTarget && page && page.ready && !page.loading);
     const portOwnedByOther = !!(port.listening && port.path && !port.matchesExe);
     const reason = (() => {
-      if (!installed) return `未找到 ZCode（已自动搜索运行进程、注册表和开始菜单）：${profile.exe}。可设置环境变量 ZCODE_PATH 指向 ZCode.exe。`;
+      if (!installed) {
+        const where = profile.exe ? `：${profile.exe}` : '';
+        const hint = profile.pathEnv ? `。可设置环境变量 ${profile.pathEnv} 指向主程序` : '';
+        return `未找到 ${profile.name}${where}${hint}。`;
+      }
       if (!running) {
         if (portOwnedByOther) return `端口 ${profile.port} 被其他进程占用：${port.path} (PID ${port.pid})。`;
-        return 'ZCode 未运行。请先启动 ZCode。';
+        return `${profile.name} 未运行。请先启动 ${profile.name}。`;
       }
-      if (!port.listening) return `ZCode 已运行，但调试端口 ${profile.port} 未开放。请完全退出 ZCode 后带 --remote-debugging-port=${profile.port} 重新启动。`;
+      if (!port.listening) return `${profile.name} 已运行，但调试端口 ${profile.port} 未开放。请完全退出后带 --remote-debugging-port=${profile.port} 重新启动。`;
       if (!ownership.verified) return platformError ? hostInfo.reason : ownershipMessage(profile, hostInfo);
       if (!supported.ok) return supported.reason;
       if (!pageTarget) return fetchError
-        ? `无法读取 ZCode 调试端口 ${profile.port}：${fetchError.message}`
-        : '未找到 ZCode 渲染页面。';
-      if (cdpError) return `ZCode 页面指纹读取失败：${cdpError.message}`;
-      if (!pageReady) return 'ZCode 页面尚未就绪（缺少 #root 或 zcode-startup-ready）。';
+        ? `无法读取 ${profile.name} 调试端口 ${profile.port}：${fetchError.message}`
+        : `未找到 ${profile.name} 渲染页面。`;
+      if (cdpError) return `${profile.name} 页面指纹读取失败：${cdpError.message}`;
+      if (!pageReady) return `${profile.name} 页面尚未就绪（找不到 ${profile.readySelector}）。`;
       return '调试端口与页面指纹校验通过';
     })();
 

@@ -11,15 +11,19 @@ const STEPS = [
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function patternFor(url) {
+  const text = String(url);
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(text);
     if (parsed.protocol === 'file:') {
       const base = parsed.pathname.replace(/[^/]*$/, '');
-      return '^' + escapeRegex(base);
+      return '^' + escapeRegex(text.slice(0, text.indexOf(parsed.pathname)) + base);
     }
-    return '^' + escapeRegex(parsed.origin + '/');
+    // 非特殊协议（app:// 这类）的 origin 是 "null"，按 URL 前缀截
+    const match = text.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i);
+    if (match) return '^' + escapeRegex(match[0]);
+    return '^' + escapeRegex(text);
   } catch {
-    return escapeRegex(url);
+    return '^' + escapeRegex(text);
   }
 }
 
@@ -62,10 +66,16 @@ export default function HostWizard({ bridge, native, onSaved }) {
   const [bgVar, setBgVar] = useState('');
   const [fgVar, setFgVar] = useState('');
   const [darkCls, setDarkCls] = useState('');
+  const [darkAttr, setDarkAttr] = useState('');
+  const [darkAttrValue, setDarkAttrValue] = useState('dark');
   const [darkTarget, setDarkTarget] = useState('body');
+  const [mediaBlob, setMediaBlob] = useState(false);
   const [name, setName] = useState('');
   const [hostId, setHostId] = useState('');
   const [test, setTest] = useState(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanResults, setScanResults] = useState(null);
+  const [importing, setImporting] = useState('');
   const [picking, setPicking] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -121,6 +131,16 @@ export default function HostWizard({ bridge, native, onSaved }) {
       const dark = (data.darkCandidates || []).find((c) => /dark/i.test(c.cls));
       setDarkCls(dark ? dark.cls : '');
       if (dark) setDarkTarget(dark.target);
+      // 属性式暗色标记（html[data-theme="dark"]）：没有暗色类但有属性候选时自动选上
+      const darkAttr = (data.darkAttrCandidates || []).find((c) => /dark/i.test(c.value));
+      if (!dark && darkAttr) {
+        setDarkAttr(darkAttr.attr);
+        setDarkAttrValue(darkAttr.value);
+        setDarkTarget(darkAttr.target);
+      }
+      // CSP 不给 file: 媒体、但给 blob: 的宿主要默认走页面内建 blob 交付
+      const csp = data.csp;
+      if (csp && csp.present && !csp.fileImage && csp.blobImage) setMediaBlob(true);
       const ready = (data.readyCandidates || [])[0];
       if (ready && !rootSelector) setRootSelector(ready.selector);
       setStep(1);
@@ -171,6 +191,50 @@ export default function HostWizard({ bridge, native, onSaved }) {
 
   const splitSelectors = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 
+  // 一键发现：扫本机调试端口 + 只读指纹，直接给出可保存的接入建议
+  const runScan = useCallback(async () => {
+    setError('');
+    setScanBusy(true);
+    try {
+      const data = await call('host.autoscan', null, 60000);
+      setScanResults(Array.isArray(data?.found) ? data.found : []);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setScanBusy(false);
+    }
+  }, [call]);
+
+  // 一键接入：内核先试穿（应用→暂停→继续→恢复），过了才落盘
+  const autoImport = useCallback(async (item) => {
+    const id = item.suggestion?.id || 'found-host';
+    setError('');
+    setImporting(id);
+    try {
+      const data = await call('host.autoimport', { profile: item.suggestion }, 90000);
+      if (!data?.ok) {
+        const stage = data?.stage === 'tryon' ? '试穿未通过' : data?.stage === 'save' ? '保存失败' : '配置不完整';
+        const detail = data?.test?.error?.message || (data?.errors || [])[0] || '';
+        setError(`${stage}：${detail || '换一个程序再试，或走下面的手动步骤'}`);
+        if (data?.stage === 'validate' && /exe/.test((data?.errors || []).join(''))) {
+          // 没定位到程序路径：把已知信息填进手动表单，让用户只补一个 exe
+          setPort(String(item.port || ''));
+          setName(item.suggestion?.name || '');
+          setHostId(item.suggestion?.id || '');
+        }
+        return;
+      }
+      setHosts(Array.isArray(data?.hosts) ? data.hosts : []);
+      setScanResults((list) => (list || []).map((entry) => (
+        entry.suggestion?.id === data.profile.id ? { ...entry, imported: true } : entry
+      )));
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setImporting('');
+    }
+  }, [call]);
+
   const profile = useCallback(() => ({
     id: hostId.trim(),
     name: name.trim(),
@@ -180,6 +244,8 @@ export default function HostWizard({ bridge, native, onSaved }) {
     readySelector: rootSelector,
     rootSelector,
     darkClass: darkCls || null,
+    darkAttr: darkAttr.trim() || null,
+    darkAttrValue: darkAttr.trim() ? (darkAttrValue.trim() || 'dark') : null,
     darkTarget,
     tokenTarget: (info?.vars || []).find((v) => v.name === bgVar)?.target || 'body',
     themedTarget: darkTarget,
@@ -189,8 +255,9 @@ export default function HostWizard({ bridge, native, onSaved }) {
     glassSelectors: glass,
     textSelectors: splitSelectors(textSelectorInput),
     skipSelector: skipSelectorInput.trim() || null,
-    varMap: noVars ? {} : autoVarMap(bgVar, fgVar, info?.vars)
-  }), [hostId, name, exe, port, info, rootSelector, darkCls, darkTarget, bgVar, fgVar, surfaces, glass, noVars, textSelectorInput, skipSelectorInput]);
+    varMap: noVars ? {} : autoVarMap(bgVar, fgVar, info?.vars),
+    mediaDelivery: mediaBlob ? 'blob' : 'file'
+  }), [hostId, name, exe, port, info, rootSelector, darkCls, darkAttr, darkAttrValue, darkTarget, bgVar, fgVar, surfaces, glass, noVars, textSelectorInput, skipSelectorInput, mediaBlob]);
 
   const runTest = useCallback(async () => {
     setError('');
@@ -254,7 +321,48 @@ export default function HostWizard({ bridge, native, onSaved }) {
         {step === 0 ? (
           <div className="wizard-body">
             <div className="wfield">
-              <label>目标程序</label>
+              <label>自动发现（推荐）</label>
+              <div className="wrow">
+                <button type="button" className="btn gold" disabled={scanBusy} onClick={runScan} data-testid="wizard-autoscan">
+                  {scanBusy ? '正在扫描…' : '自动查找宿主'}
+                </button>
+                <span className="scan-hint">先带 <code>--remote-debugging-port=9222</code> 启动目标程序，扫到后一键接入（自动试穿验证）。</span>
+              </div>
+              {scanResults ? (
+                scanResults.length ? (
+                  <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                    {scanResults.map((item) => (
+                      <div className="scan-card" key={`${item.port}-${item.suggestion?.id || item.hostId}`}>
+                        <div>
+                          <div className="scan-title">{item.imported ? (item.hostName || '已接入') : (item.suggestion?.name || item.title)}</div>
+                          <div className="scan-meta">
+                            端口 {item.port} · {item.imported ? '已接入，可直接在控制台顶部切换' : `${item.vars || 0} 个变量${item.suggestion?.mediaDelivery === 'blob' ? ' · blob 媒体' : ''}`}
+                            {!item.imported && !item.suggestion?.exe ? ' · 未定位到程序路径' : ''}
+                          </div>
+                        </div>
+                        {item.imported ? (
+                          <span className="wchip on">已接入</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn dark"
+                            disabled={importing === (item.suggestion?.id || '')}
+                            onClick={() => autoImport(item)}
+                            data-testid={`wizard-import-${item.suggestion?.id}`}
+                          >
+                            {importing === (item.suggestion?.id || '') ? '试穿中…' : '一键接入'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="note" style={{ marginTop: 8 }}>没扫到可接入的程序：确认目标程序带调试端口在运行，或用下面的手动步骤。</p>
+                )
+              ) : null}
+            </div>
+            <div className="wfield">
+              <label>手动接入（高级）</label>
               <div className="wrow">
                 <input value={exe} onChange={(event) => setExe(event.target.value)} placeholder="C:\Program Files\YourApp\YourApp.exe" data-testid="wizard-exe" />
                 <button type="button" className="btn dark" onClick={browse}>选择…</button>
@@ -269,7 +377,7 @@ export default function HostWizard({ bridge, native, onSaved }) {
                 </button>
               </div>
               <div className="whint">
-                先用 <code>--remote-debugging-port={port || '9222'}</code> 启动目标程序，再点检测。检测只读，不注入。
+                手动模式：先用 <code>--remote-debugging-port={port || '9222'}</code> 启动目标程序，再点检测。检测只读，不注入。
               </div>
             </div>
           </div>
@@ -391,7 +499,56 @@ export default function HostWizard({ bridge, native, onSaved }) {
                   ))}
                 </select>
               </div>
+              <div className="wfield">
+                <label>暗色属性名（class 以外的标记，如 data-theme）</label>
+                <div className="wrow">
+                  <input
+                    value={darkAttr}
+                    onChange={(event) => setDarkAttr(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="data-theme"
+                    data-testid="wizard-dark-attr"
+                  />
+                  <input
+                    className="input"
+                    style={{ maxWidth: 110 }}
+                    value={darkAttrValue}
+                    onChange={(event) => setDarkAttrValue(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                    placeholder="dark"
+                    data-testid="wizard-dark-attr-value"
+                  />
+                </div>
+                {info?.darkAttrCandidates?.length ? (
+                  <div className="wchips">
+                    {info.darkAttrCandidates.map((item) => (
+                      <button
+                        key={item.target + item.attr}
+                        type="button"
+                        className={`wchip${darkAttr === item.attr && darkAttrValue === item.value ? ' on' : ''}`}
+                        onClick={() => { setDarkAttr(item.attr); setDarkAttrValue(item.value); setDarkTarget(item.target); }}
+                      >
+                        {item.attr}={item.value}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
+
+            <label className="check" style={{ margin: '10px 0' }}>
+              <input
+                type="checkbox"
+                checked={mediaBlob}
+                onChange={(event) => setMediaBlob(event.target.checked)}
+                data-testid="wizard-media-blob"
+              />
+              宿主 CSP 不允许 file: 媒体（图片/视频改走页面内建 blob 交付）
+            </label>
+            {info?.csp?.present ? (
+              <div className="whint">
+                检测到 CSP：file: 图片 {String(info.csp.fileImage ? '允许' : '不允许')} · blob: 图片 {String(info.csp.blobImage ? '允许' : '不允许')} ·
+                blob: 视频 {String(info.csp.blobVideo ? '允许' : '不允许')} · 内联 style {String(info.csp.inlineStyle ? '允许' : '不允许')}
+              </div>
+            ) : null}
 
             <div className="wfield" style={{ marginTop: 10 }}>
               <label>文字元素（逗号分隔，可留空）</label>

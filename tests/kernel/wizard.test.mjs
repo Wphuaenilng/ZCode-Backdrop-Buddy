@@ -31,6 +31,33 @@ test('host profile: 校验通过并补齐默认值', () => {
   assert.equal(result.profile.tokenTarget, 'body');
   assert.equal(result.profile.themedTarget, 'body');
   assert.deepEqual(result.profile.surfaceSelectors, ['.app', '.workspace']);
+  assert.equal(result.profile.mediaDelivery, 'file');
+});
+
+test('host profile: 属性式暗色与 blob 媒体交付', () => {
+  const attrHost = validateProfile({ ...GOOD, darkClass: null, darkAttr: 'data-theme', darkAttrValue: 'dark', darkTarget: 'html', mediaDelivery: 'blob' });
+  assert.equal(attrHost.ok, true, JSON.stringify(attrHost.errors));
+  assert.equal(attrHost.profile.darkAttrValue, 'dark');
+  assert.equal(attrHost.profile.mediaDelivery, 'blob');
+
+  // 暗色 CSS 块与白名单都要出现 html[data-theme="dark"] 属性选择器
+  const generic = createGenericProfile(attrHost.profile);
+  const list = cssSelectorsFor(attrHost.profile);
+  assert.ok(list.includes('html[data-theme="dark"]'), '暗色块选择器必须是属性形态');
+  assert.ok(generic.verifyExpression().includes("getAttribute('data-theme')"), '校验探针要读属性而不是 class');
+  assert.equal(generic.mediaDelivery, 'blob');
+
+  const tokens = { panel: 'rgba(18,18,20,0.4)', dim: 'rgba(0,0,0,0.2)', contrast: '#fff', foreground: '#e8e8ea' };
+  const css = generic.buildThemeCss({ params: {}, media: null, tokens, tokensByMode: { light: tokens, dark: tokens }, mode: 'dark' });
+  assert.match(css, /html\[data-theme="dark"\] \{/);
+
+  for (const bad of [
+    { ...GOOD, darkAttr: '1bad name' },
+    { ...GOOD, darkAttr: 'data-theme', darkAttrValue: 'not ok!' },
+    { ...GOOD, mediaDelivery: 'data' }
+  ]) {
+    assert.equal(validateProfile(bad).ok, false, JSON.stringify(bad));
+  }
 });
 
 test('host profile: 拒绝越界输入', () => {
@@ -114,7 +141,6 @@ test('registry: 用户宿主会合并进列表并能解析', (t) => {
   const registry = createRegistry({ hostsDir: dir });
   const ids = registry.list().map((host) => host.id);
   assert.ok(ids.includes('zcode'));
-  assert.ok(ids.includes('obsidian'));
   assert.ok(ids.includes('my-host'));
 
   const resolved = registry.resolve({ BACKDROPBUDDY_HOST: 'my-host' });

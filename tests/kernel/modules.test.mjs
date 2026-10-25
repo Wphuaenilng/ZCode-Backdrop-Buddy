@@ -16,6 +16,8 @@ function countModules(dir) {
   return count;
 }
 
-test('kernel: module count is 91', () => {
-  assert.equal(countModules(path.join(ROOT, 'kernel')), 91);
+test('kernel: module count is 93', () => {
+  // 2026-10-25 删除 obsidian.mjs（-1），新增 autoscan.mjs / switch.mjs（+2），
+  // 同日再加 chatgpt.mjs 内置专用映射（+1）
+  assert.equal(countModules(path.join(ROOT, 'kernel')), 93);
 });

@@ -15,6 +15,8 @@ export default function register(registry, ctx) {
       startedAt: ctx.startedAt,
       uptimeMs: Date.now() - ctx.startedAt,
       host: hostStatus,
+      hostId: ctx.hostProfile ? ctx.hostProfile.id : null,
+      hostName: ctx.hostProfile ? ctx.hostProfile.name : null,
       theme: theme ? { themeId: theme.id, name: theme.name, ephemeral } : null,
       running: !!theme,
       paused: !!pointer.paused,

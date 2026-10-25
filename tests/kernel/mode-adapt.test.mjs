@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { createKernel } from '../../kernel/app/kernel.mjs';
 import { createLogger } from '../../kernel/util/logger.mjs';
 import { ZCODE_PROFILE } from '../../kernel/host/zcode.mjs';
-import { OBSIDIAN_PROFILE } from '../../kernel/host/obsidian.mjs';
 import { buildGenericThemeCss } from '../../kernel/host/generic.mjs';
 import { PROTOCOL_VERSION, METHODS } from '../../shared/protocol/constants.mjs';
 
@@ -60,10 +59,9 @@ const GENERIC_DATA = {
   surfaceSelectors: ['.pane'], glassSelectors: ['.card']
 };
 
-test('明暗适配：三个 profile 的渐变底都按模式各写一份', () => {
+test('明暗适配：zcode 与 generic 的渐变底都按模式各写一份', () => {
   const cases = [
     ['zcode', ZCODE_PROFILE.buildThemeCss(CSS_ARGS)],
-    ['obsidian', OBSIDIAN_PROFILE.buildThemeCss(CSS_ARGS)],
     ['generic', buildGenericThemeCss(GENERIC_DATA, CSS_ARGS)]
   ];
   for (const [label, css] of cases) {

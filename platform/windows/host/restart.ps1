@@ -2,7 +2,9 @@ param(
   [string]$ExePath = 'F:\shop\ZCode\ZCode.exe',
   [int]$Port = 9229,
   [int]$CloseWaitMs = 5000,
-  [int]$LaunchWaitMs = 20000
+  [int]$LaunchWaitMs = 20000,
+  [string]$AppxPackage = '',
+  [string]$ExeName = 'ChatGPT.exe'
 )
 
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -10,6 +12,20 @@ $ErrorActionPreference = 'Stop'
 
 function Send-Json($value) {
   $value | ConvertTo-Json -Compress -Depth 8
+}
+
+# MSIX 应用的安装路径带版本号会随更新漂移：按包名从 Appx 解析出当前真实 exe。
+function Resolve-AppxExe([string]$Package, [string]$Name) {
+  if (-not $Package) { return $null }
+  try {
+    $pkg = Get-AppxPackage -Name $Package -ErrorAction Stop | Sort-Object -Property Version -Descending | Select-Object -First 1
+    if (-not $pkg) { return $null }
+    foreach ($relative in @(('app\' + $Name), $Name)) {
+      $candidate = Join-Path -Path $pkg.InstallLocation -ChildPath $relative
+      if (Test-Path -LiteralPath $candidate) { return [System.IO.Path]::GetFullPath($candidate) }
+    }
+  } catch { }
+  return $null
 }
 
 function Test-LoopbackPort([int]$Port, [int]$TimeoutMs = 300) {
@@ -52,9 +68,16 @@ function Get-PortOwner([int]$Port) {
 }
 
 try {
-  $exe = [System.IO.Path]::GetFullPath($ExePath)
-  if (-not (Test-Path -LiteralPath $exe)) {
-    Send-Json @{ ok = $false; error = @{ code = 'HOST_NOT_FOUND'; message = "ZCode.exe not found: $exe" } }
+  # ExePath 为空或不存在时（内置 MSIX 宿主），按 -AppxPackage 解析真实安装路径
+  $exe = $null
+  if ($ExePath) {
+    try { $exe = [System.IO.Path]::GetFullPath($ExePath) } catch { $exe = $null }
+  }
+  if (($null -eq $exe -or -not (Test-Path -LiteralPath $exe)) -and $AppxPackage) {
+    $exe = Resolve-AppxExe $AppxPackage $ExeName
+  }
+  if (-not $exe -or -not (Test-Path -LiteralPath $exe)) {
+    Send-Json @{ ok = $false; error = @{ code = 'HOST_NOT_FOUND'; message = "$ExeName not found$(if ($exe) { ": $exe" } else { '' })" } }
     return
   }
 
@@ -116,7 +139,7 @@ try {
   if (@(Get-MatchingProcesses $exe).Count -gt 0) {
     Send-Json @{
       ok = $false
-      error = @{ code = 'STOP_TIMEOUT'; message = 'ZCode processes did not exit; close ZCode manually and retry' }
+      error = @{ code = 'STOP_TIMEOUT'; message = "$([System.IO.Path]::GetFileName($exe)) processes did not exit; close it manually and retry" }
       stopped = $stopped
       forced = $forced
     }
@@ -147,7 +170,7 @@ try {
     stopped = $stopped
     forced = $forced
     error = $(if (-not $open) {
-      @{ code = 'DEBUG_PORT_TIMEOUT'; message = "ZCode started (PID $($started.Id)) but port $Port did not open within ${LaunchWaitMs}ms" }
+      @{ code = 'DEBUG_PORT_TIMEOUT'; message = "$([System.IO.Path]::GetFileName($exe)) started (PID $($started.Id)) but port $Port did not open within ${LaunchWaitMs}ms" }
     } else { $null })
   }
 } catch {

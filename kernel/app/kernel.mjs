@@ -133,7 +133,19 @@ export async function createKernel(options = {}) {
     hostRegistry,
     hostProfile: profile,
     bus,
-    lifecycle
+    lifecycle,
+    switchHostDeps: {
+      buildAdapter: options.buildHostAdapter || ((nextProfile) => createHostAdapter({
+        detector: createDetector({ profile: nextProfile, appRoot, logger }),
+        logger,
+        appRoot,
+        paths,
+        profile: nextProfile,
+        runtime,
+        getPreferences: () => config.get(),
+        session: options.session
+      }))
+    }
   });
 
   const router = new Router();

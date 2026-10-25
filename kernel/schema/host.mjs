@@ -30,3 +30,10 @@ export const hostProfileBody = {
   required: ['profile'],
   properties: { profile: { type: 'object' } }
 };
+
+export const hostUse = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id'],
+  properties: { id: { type: 'string', minLength: 1, maxLength: 32 } }
+};

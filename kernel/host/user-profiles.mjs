@@ -69,6 +69,18 @@ export function validateProfile(raw) {
   if (input.darkClass != null && (!isString(input.darkClass, 1, 60) || !CLASS_RE.test(input.darkClass))) {
     errors.push('darkClass 不是合法类名');
   }
+  // 属性式暗色标记：比如 ChatGPT 的 html[data-theme="dark"]（class 形态表达不了）
+  if (input.darkAttr != null && input.darkAttr !== '') {
+    if (!isString(input.darkAttr, 2, 40) || !/^[a-z][a-z0-9-]{1,39}$/i.test(input.darkAttr)) {
+      errors.push('darkAttr 不是合法属性名（如 data-theme）');
+    } else if (input.darkAttrValue != null && (!isString(input.darkAttrValue, 1, 20) || !/^[a-z0-9_-]{1,20}$/i.test(input.darkAttrValue))) {
+      errors.push('darkAttrValue 不是合法属性值');
+    }
+  }
+  // 媒体交付：宿主 CSP 不允许 file: 时改走页面内建 blob（图片与视频都能过 blob: 的 CSP）
+  if (input.mediaDelivery != null && !['file', 'blob'].includes(input.mediaDelivery)) {
+    errors.push('mediaDelivery 只能是 file 或 blob');
+  }
   for (const field of ['darkTarget', 'tokenTarget', 'themedTarget']) {
     if (input[field] != null && !['html', 'body'].includes(input[field])) errors.push(`${field} 只能是 html 或 body`);
   }
@@ -108,6 +120,8 @@ export function validateProfile(raw) {
     readyClass: input.readyClass || null,
     rootSelector: input.rootSelector,
     darkClass: input.darkClass || null,
+    darkAttr: input.darkAttr || null,
+    darkAttrValue: input.darkAttr ? (input.darkAttrValue || 'dark') : null,
     darkTarget: input.darkTarget || 'body',
     tokenTarget: input.tokenTarget || 'body',
     themedTarget: input.themedTarget || 'body',
@@ -118,6 +132,7 @@ export function validateProfile(raw) {
     textSelectors,
     skipSelector,
     varMap,
+    mediaDelivery: input.mediaDelivery === 'blob' ? 'blob' : 'file',
     minVersion: input.minVersion || null,
     createdAt: input.createdAt || new Date().toISOString()
   };

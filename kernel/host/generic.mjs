@@ -45,6 +45,11 @@ function safeOverlay(p, t) {
 }
 
 export function darkSelector(data) {
+  // 属性形态优先：ChatGPT 这类宿主的暗色标记是 html[data-theme="dark"]，不是 class
+  if (data.darkAttr) {
+    const value = data.darkAttrValue || 'dark';
+    return `${data.darkTarget === 'body' ? 'body' : 'html'}[${data.darkAttr}="${value}"]`;
+  }
   if (!data.darkClass) return null;
   return `${data.darkTarget === 'body' ? 'body' : 'html'}.${data.darkClass}`;
 }
@@ -94,18 +99,18 @@ export function buildGenericThemeCss(data, { params, media, tokens, tokensByMode
       ? 'none'
       : fallbackGradient(p, which));
   const sizeValue = media && media.kind === 'image' ? size : 'cover';
+  // 视频主题时层保持全透明（视频元素在层之前、同 z-index，层上任何底色都会盖住视频）
   const imageLine = [
     'background-image: var(--bb-backdrop-image);',
     `background-size: ${sizeValue}; background-position: ${position}; background-repeat: no-repeat;`,
-    `transform: scale(${scale}); transform-origin: ${position};`,
-    media && media.kind === 'video' ? 'background-color: #000;' : ''
-  ].filter(Boolean).join(' ');
+    `transform: scale(${scale}); transform-origin: ${position};`
+  ].join(' ');
 
   const darkSel = darkSelector(data);
   const surfaces = (data.surfaceSelectors || []).join(',\n');
   const glass = (data.glassSelectors || []).join(',\n');
   const darkGlass = darkSel && data.glassSelectors && data.glassSelectors.length
-    ? data.glassSelectors.map((sel) => `${dark} ${sel}`).join(',\n')
+    ? data.glassSelectors.map((sel) => `${darkSel} ${sel}`).join(',\n')
     : null;
 
   const rules = [
@@ -206,6 +211,8 @@ export function createGenericProfile(data) {
     testidSelector: null,
     rootSelector: data.rootSelector,
     darkClass: data.darkClass || null,
+    darkAttr: data.darkAttr || null,
+    darkAttrValue: data.darkAttr ? (data.darkAttrValue || 'dark') : null,
     darkTarget: data.darkTarget || 'body',
     tokenTarget: data.tokenTarget || 'body',
     themedTarget: data.themedTarget || 'body',
@@ -213,6 +220,7 @@ export function createGenericProfile(data) {
     foregroundVar: data.foregroundVar || '',
     textSelectors: Array.isArray(data.textSelectors) ? data.textSelectors : [],
     skipSelector: data.skipSelector || null,
+    mediaDelivery: data.mediaDelivery === 'blob' ? 'blob' : 'file',
     minVersion: data.minVersion || null,
     hashHostFiles: false,
     cssSelectors: cssSelectorsFor(data),
@@ -241,6 +249,8 @@ function pickExpressionFields(data) {
     testidSelector: null,
     rootSelector: data.rootSelector,
     darkClass: data.darkClass || null,
+    darkAttr: data.darkAttr || null,
+    darkAttrValue: data.darkAttr ? (data.darkAttrValue || 'dark') : null,
     darkTarget: data.darkTarget || 'body',
     tokenTarget: data.tokenTarget || 'body',
     themedTarget: data.themedTarget || 'body',

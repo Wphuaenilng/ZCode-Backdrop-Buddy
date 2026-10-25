@@ -76,7 +76,11 @@ namespace BackdropBuddy.Shell.Infrastructure
 
             var startInfo = new ProcessStartInfo(_nodeExe)
             {
-                Arguments = "\"" + _kernelMain + "\" --mode manager",
+                // app-root 显式传给内核：宿主环境里可能残留别的安装的 BACKDROPBUDDY_APP_ROOT
+                // （内核的 env 优先级高于 cwd），不传会把 PS 脚本解析到别的安装目录去。
+                // 结尾不能带反斜杠——它会转义收尾引号，整个参数在 argv 解析时就碎了。
+                Arguments = "\"" + _kernelMain + "\" --mode manager --app-root \""
+                    + _workingDirectory.TrimEnd('\\') + "\"",
                 WorkingDirectory = _workingDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true,

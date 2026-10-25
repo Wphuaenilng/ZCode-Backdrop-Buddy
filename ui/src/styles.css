@@ -794,3 +794,17 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius
 .wresult.ok { background: #F1F7F2; border: 1px solid #D6E7DA; color: #2F5C3E; }
 .wresult.bad { background: #FDF1EF; border: 1px solid #E8CFCA; color: #8A3B31; }
 .host-empty { color: var(--ink-2); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; text-align: center; }
+
+/* 控制台顶部的宿主切换条：一个按钮切换当前换肤目标，每个宿主各记各的壁纸 */
+.host-switcher { display: flex; align-items: center; gap: 10px; padding: 0 0 10px; flex-wrap: wrap; }
+.host-switcher-label { font-size: 11.5px; color: var(--ink-2); flex: none; }
+.host-switcher .wchips { margin-top: 0; }
+.wchip.add { border-style: dashed; background: transparent; }
+.wchip[disabled] { opacity: 0.75; cursor: default; }
+.wchip.on { box-shadow: 0 0 0 1px #E3D3B4 inset; }
+
+/* 向导页的自动发现结果卡片 */
+.scan-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.scan-card .scan-title { font-size: 13px; font-weight: 600; }
+.scan-card .scan-meta { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; word-break: break-all; }
+.scan-hint { font-size: 11.5px; color: var(--ink-2); }

@@ -2,7 +2,9 @@ import { METHODS } from '../../shared/protocol/constants.mjs';
 import { METHOD_SCHEMAS } from '../schema/methods.mjs';
 import { AppError } from '../protocol/errors.mjs';
 import { inspectHost, pickStart, pickPoll, pickCancel, testProfile } from '../host/wizard.mjs';
-import { saveUserProfile } from '../host/user-profiles.mjs';
+import { saveUserProfile, validateProfile } from '../host/user-profiles.mjs';
+import { scanHosts } from '../host/autoscan.mjs';
+import { switchHost } from '../host/switch.mjs';
 
 export default function register(registry, ctx) {
   const hosts = () => (ctx.hostRegistry ? ctx.hostRegistry.list() : []);
@@ -11,6 +13,49 @@ export default function register(registry, ctx) {
     hosts: hosts(),
     active: ctx.hostProfile ? ctx.hostProfile.id : null
   }));
+
+  // 一键发现：扫本机调试端口 + 只读指纹，直接给出可保存的 profile 建议
+  registry.register(METHODS.HOST_AUTOSCAN, METHOD_SCHEMAS[METHODS.HOST_AUTOSCAN], async () => {
+    const knownProfiles = (ctx.hostRegistry ? ctx.hostRegistry.list() : [])
+      .map((host) => ctx.hostRegistry.get(host.id))
+      .filter(Boolean);
+    const found = await scanHosts({
+      appRoot: ctx.paths.appRoot,
+      logger: ctx.logger,
+      knownProfiles
+    });
+    return { found, hosts: hosts(), active: ctx.hostProfile ? ctx.hostProfile.id : null };
+  });
+
+  // 一键接入：先试穿（应用→暂停→继续→恢复，不动 pointer），过了才落盘注册
+  registry.register(METHODS.HOST_AUTOIMPORT, METHOD_SCHEMAS[METHODS.HOST_AUTOIMPORT], async (params) => {
+    const validated = validateProfile(params.profile);
+    if (!validated.ok) {
+      return { ok: false, stage: 'validate', errors: validated.errors };
+    }
+    const test = await testProfile({
+      profile: validated.profile,
+      appRoot: ctx.paths.appRoot,
+      paths: ctx.paths,
+      logger: ctx.logger
+    });
+    if (!test.ok) {
+      ctx.logger?.warn('autoimport try-on failed', { id: validated.profile.id, error: test.error });
+      return { ok: false, stage: 'tryon', test };
+    }
+    const saved = saveUserProfile(ctx.paths.hosts, validated.profile);
+    if (!saved.ok) {
+      return { ok: false, stage: 'save', errors: saved.errors };
+    }
+    if (ctx.hostRegistry) ctx.hostRegistry.reload();
+    ctx.logger?.info('host auto-imported', { id: saved.profile.id, path: saved.path });
+    return { ok: true, profile: saved.profile, test, hosts: hosts() };
+  });
+
+  // 一键切换：换活动宿主并自动补上它上次的壁纸
+  registry.register(METHODS.HOST_USE, METHOD_SCHEMAS[METHODS.HOST_USE], async (params) => (
+    switchHost(ctx, params.id)
+  ));
 
   registry.register(METHODS.HOST_INSPECT, METHOD_SCHEMAS[METHODS.HOST_INSPECT], async (params) => (
     inspectHost({ port: params.port })
