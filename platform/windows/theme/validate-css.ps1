@@ -48,7 +48,7 @@ try {
     'background-repeat', 'transform', 'transform-origin', 'position', 'inset', 'top', 'right',
     'bottom', 'left', 'width', 'height', 'z-index', 'pointer-events', 'opacity', 'content',
     'backdrop-filter', '-webkit-backdrop-filter', 'object-fit', 'object-position', 'display', 'overflow',
-    'border-radius', 'box-shadow', 'color', 'filter'
+    'border-radius', 'box-shadow', 'color', 'filter', 'text-shadow'
   )
 
   $selectors = @()

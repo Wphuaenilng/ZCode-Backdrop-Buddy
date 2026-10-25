@@ -12,8 +12,8 @@ import { extractFrame } from '../../kernel/media/video.mjs';
 import { assertSize } from '../../kernel/media/limits.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const IMAGE = path.join(ROOT, 'assets', 'original.jpg');
-const VIDEO = path.join(ROOT, 'assets', 'original.mp4');
+const IMAGE = path.join(ROOT, 'assets', 'sakura-dawn.jpg');
+const VIDEO = path.join(ROOT, 'assets', 'silver-glass-dream.mp4');
 const tools = resolveTools();
 
 test('media: hashes are stable and 64 hex characters', async () => {
@@ -23,8 +23,8 @@ test('media: hashes are stable and 64 hex characters', async () => {
   assert.match(first, /^[0-9a-f]{64}$/);
 });
 
-test('media: probes image dimensions', async () => {
-  assert.ok(tools.ffprobe, 'ffprobe is required for the local media tests');
+test('media: probes image dimensions', async (t) => {
+  if (!tools.ffprobe) return t.skip('ffprobe not installed');
   const info = await probeMedia(IMAGE, { tools });
   assert.equal(info.kind, 'image');
   assert.equal(info.mime, 'image/jpeg');
@@ -38,8 +38,8 @@ test('media: rejects oversized media', () => {
   assert.throws(() => assertSize(201 * 1024 * 1024, 'video'), /exceeds/);
 });
 
-test('media: compresses an image to at most 1400 px', async () => {
-  assert.ok(tools.ffmpeg, 'ffmpeg is required for the local media tests');
+test('media: compresses an image to at most 1400 px', async (t) => {
+  if (!tools.ffmpeg) return t.skip('ffmpeg not installed');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-media-'));
   const target = path.join(dir, 'media.jpg');
   const info = await probeMedia(IMAGE, { tools });
@@ -52,8 +52,8 @@ test('media: compresses an image to at most 1400 px', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('media: probes video and extracts its first frame', async () => {
-  assert.ok(tools.ffmpeg && tools.ffprobe, 'ffmpeg/ffprobe are required for the local media tests');
+test('media: probes video and extracts its first frame', async (t) => {
+  if (!(tools.ffmpeg && tools.ffprobe)) return t.skip('ffmpeg/ffprobe not installed');
   const info = await probeMedia(VIDEO, { tools });
   assert.equal(info.kind, 'video');
   assert.equal(info.width, 3840);

@@ -118,7 +118,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(N
 export function normalizeThemeParams(value = {}) {
   const input = value && typeof value === 'object' ? value : {};
   const mode = ['auto', 'cover', 'contain', 'stretch'].includes(input.mode) ? input.mode : 'auto';
-  const safe = ['auto', 'left', 'right', 'center'].includes(input.safe) ? input.safe : 'auto';
+  const safe = ['auto', 'left', 'right', 'center', 'off'].includes(input.safe) ? input.safe : 'auto';
   const task = ['auto', 'ambient', 'focus'].includes(input.task) ? input.task : 'auto';
   const accent = /^#[0-9a-f]{6}$/i.test(String(input.accent || '')) ? String(input.accent).toLowerCase() : '#6f9275';
 
@@ -195,10 +195,12 @@ function colorVars(t) {
 
 function safeOverlay(p, t) {
   const scrim = t.scrim || t.dim;
-  if (p.safe === 'left') return `linear-gradient(90deg, ${scrim}, transparent 62%)`;
-  if (p.safe === 'right') return `linear-gradient(270deg, ${scrim}, transparent 62%)`;
+  if (p.safe === 'off') return 'transparent';
   if (p.safe === 'center') return `radial-gradient(circle at 50% 45%, transparent 35%, ${scrim} 100%)`;
-  return 'transparent';
+  // ZCode 任务列表是左侧固定轨道（实测 ~260px），auto 也默认护左。
+  // 渐变用 px：轨道宽度不随窗口缩放，百分比会在窄窗漏盖、宽窗多盖。
+  const angle = p.safe === 'right' ? '270deg' : '90deg';
+  return `linear-gradient(${angle}, ${scrim} 0px, ${scrim} 260px, transparent 420px)`;
 }
 
 export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'light' }) {
@@ -208,7 +210,16 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
   const position = `${clamp(p.x + p.hpos * 0.3, 0, 100)}% ${p.y}%`;
   const scale = (clamp(p.zoom, 100, 220) / 100).toFixed(2);
   const size = p.mode === 'contain' ? 'contain' : p.mode === 'stretch' ? '100% 100%' : 'cover';
-  const blur = p.task === 'focus' ? '26px' : p.task === 'ambient' ? '12px' : '18px';
+  // "UI 隐形"基调：auto/ambient 不加毛玻璃、壁纸层不糊，人物原画质透出；
+  // 文字靠 text-shadow 与侧栏 scrim 托底，focus 档才收拢成重磨砂
+  const blur = p.task === 'focus' ? '26px' : '0px';
+  const backdropBlur = p.task === 'focus' ? '10px' : '0px';
+  // 裸字直接压壁纸时投影是唯一可读性来源：紧凑轮廓 + 柔和光晕两段叠加，
+  // 半径大的那段负责把字从亮部"抬"出来，小半径段保持字形锐利
+  const textShadow = {
+    light: '0 1px 2px rgba(255,255,255,0.65), 0 0 1px rgba(255,255,255,0.60), 0 0 6px rgba(255,255,255,0.45)',
+    dark: '0 1px 2px rgba(0,0,0,0.60), 0 0 1px rgba(0,0,0,0.55), 0 0 6px rgba(0,0,0,0.45)'
+  };
 
   // 背景图与视频底跟模式无关，只有"无素材时的渐变"分明暗，所以拆成两个模式块各一个变量。
   const backdropImage = (which) => (media && media.kind === 'image'
@@ -217,13 +228,13 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
       ? 'none'
       : fallbackGradient(p, which));
   const sizeValue = media && media.kind === 'image' ? size : 'cover';
-  const videoFloor = media && media.kind === 'video' ? '  background-color: #000;' : '';
 
   return [
     ':root, html.theme-zai-light {',
     colorVars(light),
     `  --bb-dim: ${light.dim};`,
     `  --bb-safe: ${safeOverlay(p, light)};`,
+    `  --bb-text-shadow: ${textShadow.light};`,
     `  --bb-backdrop-image: ${backdropImage('light')};`,
     '  --color-background-win-alt: transparent !important;',
     '}',
@@ -231,6 +242,7 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     colorVars(dark),
     `  --bb-dim: ${dark.dim};`,
     `  --bb-safe: ${safeOverlay(p, dark)};`,
+    `  --bb-text-shadow: ${textShadow.dark};`,
     `  --bb-backdrop-image: ${backdropImage('dark')};`,
     '}',
     ':root {',
@@ -242,14 +254,13 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     `  --color-find-highlight-active: ${p.accent} !important;`,
     '}',
     'html, body { background: transparent !important; }',
-    '#root { position: relative; z-index: 1; }',
+    '#root { position: relative; z-index: 1; text-shadow: var(--bb-text-shadow); }',
     '#backdropbuddy-backdrop {',
     '  position: fixed; inset: -16px; z-index: 0; pointer-events: none;',
     '  background-image: var(--bb-backdrop-image);',
     `  background-size: ${sizeValue}; background-position: ${position}; background-repeat: no-repeat;`,
     `  transform: scale(${scale}); transform-origin: ${position};`,
-    videoFloor,
-    '  filter: blur(2px);',
+    `  filter: blur(${backdropBlur});`,
     '}',
     '#backdropbuddy-backdrop::before {',
     '  content: ""; position: absolute; inset: 0; pointer-events: none;',
@@ -263,7 +274,7 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     '  position: fixed; inset: -16px; z-index: 0; width: calc(100% + 32px); height: calc(100% + 32px);',
     '  object-fit: cover; pointer-events: none; background: #000;',
     `  object-position: ${position}; transform: scale(${scale}); transform-origin: ${position};`,
-    '  filter: blur(2px);',
+    `  filter: blur(${backdropBlur});`,
     '}',
     `[class~="bg-background"], [class~="bg-sidebar"], [class~="bg-header"] { backdrop-filter: blur(${blur}) saturate(1.08); }`,
     ''

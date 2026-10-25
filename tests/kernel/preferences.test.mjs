@@ -114,7 +114,7 @@ async function openKernel(options = {}) {
   fs.mkdirSync(mediaHome, { recursive: true });
   if (!fs.existsSync(path.join(mediaHome, 'theme.json'))) {
     fs.writeFileSync(path.join(mediaHome, 'media.mp4'), 'fake-video-bytes', 'utf8');
-    fs.writeFileSync(path.join(mediaHome, 'thumb.jpg'), fs.readFileSync(path.join(ROOT, 'assets', 'original.jpg')));
+    fs.writeFileSync(path.join(mediaHome, 'thumb.jpg'), fs.readFileSync(path.join(ROOT, 'assets', 'sakura-dawn.jpg')));
     fs.writeFileSync(path.join(mediaHome, 'theme.json'), JSON.stringify({
       schema: 'backdropbuddy.theme/1',
       id: 'video-theme',

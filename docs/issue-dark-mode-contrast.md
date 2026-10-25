@@ -261,3 +261,132 @@ input   = clamp(panel + 0.18, 0.66 dark / 0.70 light, 0.84 / 0.90)
 - 语义色 surface（destructive/success/warning）未覆盖，避免误改宿主语义色。
 - 浅色模式实机只验证了 token 与 class 跟随，未逐元素复测。
 - UI 的宿主预览（`ui/src/components/HostPreview.jsx`）仍使用旧的固定透明度模型，与实际宿主效果存在偏差。
+
+## 11. 高频细节穿透的后续优化（2026-10-25）
+
+- 触发：高细节壁纸（动漫线稿、发丝）下侧栏/任务列表小字仍发虚。对比度按纯色合成背景计算可达标，但高频边缘透过半透明面板与字形叠加，观感上"不清晰"。
+
+### 11.1 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/zcode.mjs` | 注入 CSS 新增 `--bb-text-shadow`（明暗两套 1~2px 保护性投影），`#root` 继承；壁纸层/视频层 `blur(2px)` 改为随 task 档位：auto 4px / ambient 6px / focus 10px |
+| `platform/windows/theme/validate-css.ps1` | 属性白名单新增 `text-shadow` |
+| `platform/windows/theme/color.ps1` | `foregroundSubtlest` 暗色 0.62 → 0.70、亮色 0.58 → 0.68 |
+| `tests/kernel/host.test.mjs` | 断言随新值更新；新增 task 档位模糊用例、text-shadow 用例、subtlest 用例 |
+
+### 11.2 设计取舍
+
+- 投影半径压在 ≤2px：足以把字形从壁纸高频细节中剥离，又不至于让字本身发糊；实底面板（popover 0.97+）上几乎不可见。
+- 壁纸层模糊与面板毛玻璃（26/12/18px）同源联动 task 档位，`inset: -16px` 余量覆盖 10px 模糊不露边；auto 档从 2px 提到 4px，保壁纸质感与可读性的折中。
+- 亮度驱动的面板 alpha 公式未动，本轮只加"细节抑制"与"前景提实"两条防线；`risk` 指标参与 alpha 计算、毛玻璃扩类（`bg-card` 等）留待下轮视实机效果决定。
+
+### 11.3 验证
+
+- kernel 测试 55 用例：52 通过、0 失败、3 跳过（ffprobe/ffmpeg 未安装的环境用例，与本轮无关）。
+- 生成 CSS 经 `validate-css.ps1` 白名单校验通过（含新属性与 `#root` 选择器）。
+- 生效方式：重新 apply 主题（token 与 CSS 均在 apply 时生成）；亮度缓存不受影响。
+
+## 12. 侧栏落点打空与视频遮罩层级 bug（2026-10-25 第二轮）
+
+- 触发：用户对比原生支持背景的 Codex 客户端（侧栏近实底深色、裸字带描边、壁纸只在无字区露出），反馈 ZCode 侧栏任务列表文字仍不清晰。经 CDP 只读实测（`http://127.0.0.1:9229/json/list`）定位到三个根因。
+
+### 12.1 实测根因
+
+| # | 发现 | 证据 |
+| --- | --- | --- |
+| 1 | **侧栏 token 落点全部打空**：`bg-sidebar`/`bg-header` 类命中 0 个；左侧栏（0~260px）不在任何 `bg-background` 容器内（主工作区 section 从 x=268 起）；侧栏文字（"新建任务"/"Ctrl+N"）完整祖先链无任何背景绘制、无毛玻璃；注入的 `--color-sidebar: 0.46` 无元素引用 | 侧栏唯一底衬是全局 dim `rgba(18,18,20,0.08)`，几乎裸压壁纸 |
+| 2 | **视频主题遮罩层级 bug**：`injectionExpression` 把 `<video>` 插在遮罩层之后，两者同为 `z-index: 0`，按 DOM 顺序视频盖住了层的 `::before/::after`——**视频主题的 dim/safe 从未真正生效** | 实测 `body` 首三个子元素为 `[backdropbuddy-backdrop, backdropbuddy-video, #root]`，`::after` 存在但被盖 |
+| 3 | scrim 强度公式下限过低：`dim*0.75` 且 dim 触底 0.08 → scrim 仅 0.06 | 与 1 叠加后侧栏遮罩形同虚设 |
+
+### 12.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/expressions.mjs` | 视频插入改为 `insertBefore(video, layer)`（遮罩层伪元素必须盖在视频上），并幂等重排旧注入残留的顺序 |
+| `kernel/host/zcode.mjs` | `safeOverlay` 改为按侧栏轨道宽度的 px 渐变（260px 实心 + 420px 渐隐），`auto` 默认护左；`safe` 枚举新增 `off`；删除壁纸层 `#000` 地板（视频移到层下后必须删，视频元素自带 `background: #000`） |
+| `platform/windows/theme/color.ps1` | scrim 强度独立：`dark = clamp(max(darkA, 0.38 + 0.34·risk), 0.38, 0.72)`、`light = clamp(max(lightA, 0.32 + 0.32·risk), 0.32, 0.62)`；dim 下限 dark 0.08→0.18 / light 0.03→0.08；panel 下限 dark 0.16→0.22 / light 0.03→0.06；luminance 输出新增 darkScrim/lightScrim |
+| `ui/src/components/SettingsView.jsx` | "文字安全区"下拉新增"关闭" |
+| `tests/kernel/host.test.mjs` | 新增 safe 渐变几何与禁用用例、scrim 下限/联动断言；safe=off 归一化断言 |
+
+### 12.3 效果核算（暗色、视频主题、中等亮度封面 p90≈0.65、risk≈0.55）
+
+| 项 | 修复前 | 修复后 |
+| --- | --- | --- |
+| dim | 0.08（且被视频盖住，实际 0） | 0.18（真正盖在视频上） |
+| 侧栏 scrim | 0.06（同样被盖住） | 0.57，px 渐变精确覆盖 260px 轨道 |
+| 侧栏最坏点亮部（240）对比度 | ≈1.5:1 | dim+scrim 合成 ≈0.65 遮盖 → ≈5.1:1（AA） |
+| 文字投影 / 壁纸层 blur | 无 / 2px | §11 的 text-shadow + 4px（task 联动） |
+
+- 注意：侧栏对比度提升主要来自 scrim（结构防线的兜底），不再依赖宿主是否引用 `--color-sidebar`。
+- 视频 dim 生效后，暗调视频整体会比之前略暗 0.18，这是修 bug 的必然结果（此前从未生效）。
+
+### 12.4 验证
+
+- kernel 测试 110 用例：107 通过、0 失败、3 跳过（ffprobe/ffmpeg 缺失，与本轮无关）。
+- 端到端演练：`color.ps1`（模拟封面亮度）→ `buildThemeCss`（video 媒体）→ `validate-css.ps1` 通过（10 规则、5,547 B）。
+- 生效方式：重新构建（安装版需重打包）后在 BackdropBuddy 重新 apply 主题。
+
+## 13. 中间会话列透明度调优（2026-10-25 第三轮）
+
+- 触发：用户反馈修复后会话列（x ≈ 12%~45%）压得过实，希望透出壁纸人物。
+- 该区域暗化由三层叠加：panel token（`bg-background` 容器）+ 毛玻璃 blur + 全局 dim；其中 18px 毛玻璃是"人物糊掉"的主因。
+
+### 13.1 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/zcode.mjs` | 面板毛玻璃按 task 档位改为 focus 26px / ambient 5px / auto 8px（原 26/12/18），auto/ambient 刻意放轻，文字改由 text-shadow、card 保底与侧栏 scrim 托底 |
+| `platform/windows/theme/color.ps1` | 暗色 panel 下限 0.22 → 0.10：侧栏已有独立 scrim、card/input 各有保底，下限只兜底滑块极低值，否则 panel 滑块低于 22 时被钳住失效 |
+| 用户主题 `local-video` | panel 参数 30 → 12（写入 theme.json 与 pointer.json），会话列底从 0.30 降到 0.12 |
+
+### 13.2 效果
+
+- 会话列合成遮盖：dim 0.18 + panel 0.30 + blur18 → dim 0.18 + panel 0.12 + blur8，合成遮盖约 0.43 → 0.28，人物面部细节可见。
+- 卡片（0.62）、输入框（0.66）、侧栏 scrim（0.43）不变，文字承载面仍达标。
+- 视觉验收：中栏人物清晰可见，对话文字可读性可接受（"白纸上读黑字"），左侧栏保持深色可读。
+- 若需微调：UI"面板不透明度"滑块现在在低区间真实生效；要更糊更实选"任务页模式 → 聚焦"（26px 重磨砂）。
+
+## 14. "UI 隐形"风格落地（2026-10-25 第四轮）
+
+- 触发：用户给出明确参考图——中间区域完全透出壁纸原画质（无压暗、无模糊），文字靠投影可读；左栏约 30% 轻压暗；输入框深色实底。风格从"可读性优先"切换为"壁纸优先、投影托底"。
+
+### 14.1 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/zcode.mjs` | 面板毛玻璃与壁纸层模糊按 task 档位改为：focus 26px/10px，ambient 与 auto 均 0px（原 26/5/8 与 10/6/4）；text-shadow 增强为三段（1px 轮廓 + 1px 加深 + 6px 柔和光晕） |
+| `platform/windows/theme/color.ps1` | darkDim 下限 0.18→0.06、lightLift 0.08→0.04；scrim 下限 dark 0.38→0.30 / light 0.32→0.26，上限收窄至 0.60/0.55；card 保底 0.62/0.66→0.35/0.40；input 保底 0.66/0.70→0.88/0.90（实底），上限 0.94/0.96 |
+| 用户主题 `local-video` | panel 参数 12 → 3 |
+| `tests/kernel/host.test.mjs` | 断言随新基线更新（blur 0px、text-shadow 三段、dim≥0.06、scrim≥0.30/0.26） |
+
+### 14.2 实测（注入后 CDP 读取）
+
+| 区域 | 合成遮盖 | 效果 |
+| --- | --- | --- |
+| 中间会话列 | panel 0.10 + dim 0.06 ≈ 0.15，无毛玻璃、壁纸层 blur 0 | 人物原画质，帧细节完整 |
+| 左侧任务栏 | scrim 0.35 + dim 0.06 ≈ 0.39 | 轻压暗，透出壁纸轮廓，文字可读 |
+| 输入框 | 0.88 | 接近实底 |
+| 消息卡片 | 0.35 | 轻微底衬，悬浮元素仍有层次 |
+
+- 视觉验收：中间人物原画质、主体文字靠三段投影在亮部可读；弱点仅剩 10~11px 灰色元文字压在人物高光上（风格固有取舍）。
+- 回退路径：要恢复"重磨砂+实底面板"选"任务页模式 → 聚焦"（26px 毛玻璃 + 10px 壁纸模糊）；面板滑块可整体加深。
+
+### 14.3 事故记录：staging 同步静默失败（2026-10-25 14:46 修复）
+
+- 现象：用户重启应用并从 UI 重新 apply 后，第四轮效果丢失、回到第二轮厚重风格。
+- 根因一（主）：向 `build/out` 同步内核时在 Git Bash 里调用 robocopy，`/MIR` 等开关被 MSYS 误转换为路径导致命令失败，且子 shell 吞掉了退出码——staging 一直停留在第二轮代码，UI 重 apply 用旧内核生成旧 CSS。
+- 根因二（次）：用户 apply 时 ZCode 页面处于浅色模式，视频主题无 thumb 走 fallback 亮度，`fallbackLuminance` 按模式取值——浅色分支按"高亮图"处理，两套 token 都按亮图公式算出重面板（panel 0.52/scrim 0.70），比预期更暗。
+- 修复：改用 `rm -rf + cp -r` 同步并逐行 grep 校验 staging 与源码一致（inputFloor 0.88、darkScrim 0.30–0.60、三段投影、blur 0px 均确认）；重启后重新注入，实测恢复第四轮数值。
+- 教训：向运行目录同步必须带内容校验，不能只看命令退出链；`fallbackLuminance` 的明暗分支差异（视频无 thumb 时）留待后续统一为模式无关的中性值。
+
+## 15. "替换壁纸失败"：BACKDROPBUDDY_APP_ROOT 指向旧包（2026-10-25 15:20 修复）
+
+- 现象：控制台"应用皮肤"报 `应用失败：注入样式未通过白名单校验： property is not allowed: text-shadow`。
+- 根因：会话环境里存在 `BACKDROPBUDDY_APP_ROOT=D:\BackdropBuddy`（未定义在用户/系统层，来自启动终端的继承）。内核按该变量解析 `platform/windows` 脚本目录，实际执行的是 D 盘 11:51 打包的**旧版** color.ps1 / validate-css.ps1——旧白名单不认识当天新增的 `text-shadow`，且旧 color.ps1 输出第一轮之前的 token。内核模块（zcode.mjs）仍从入口路径加载新版，于是出现"新 CSS 生成、旧校验拒绝"的组合。
+- 排查路径：内核日志无 apply 记录 → 备份目录发现 apply CSS（写盘成功、注入前被拒）→ 对比真实 CSS 与模拟输出（subtlest 0.58 暴露脚本版本）→ 检查 node 进程环境变量定位。
+- 修复：
+  1. 清掉该环境变量重启应用（`env -u`），appRoot 回落为 exe 目录；
+  2. D:\BackdropBuddy 的 kernel/platform/ui 同步为当前代码，即使变量再被带上也不会执行旧脚本；
+  3. computer-use 实测：UI 点选"原图素材 → 应用皮肤"，`host applied` 成功，ZCode 主题切换且新特性（三段投影、px 侧栏渐变）生效。
+- 建议：`resolveAppRoot` 对 env 提供的路径做存在性/一致性校验或至少在日志中显式记录 appRoot 来源，避免静默指向旧包；用户侧建议清理终端里遗留的 `BACKDROPBUDDY_APP_ROOT`。

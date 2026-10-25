@@ -44,7 +44,7 @@ async function openKernel(t) {
 
 test('import: pack media is stored under a normalized name', async (t) => {
   const { kernel, dataDir } = await openKernel(t);
-  const image = fs.readFileSync(path.join(ROOT, 'assets', 'original.jpg'));
+  const image = fs.readFileSync(path.join(ROOT, 'assets', 'sakura-dawn.jpg'));
 
   const record = {
     schema: 'backdropbuddy.theme/1',
@@ -89,7 +89,7 @@ test('import: a json theme larger than 1 MiB is rejected before parsing', async 
 
 test('import: an explicit id that already exists is rejected', async (t) => {
   const { kernel, dataDir } = await openKernel(t);
-  const image = fs.readFileSync(path.join(ROOT, 'assets', 'original.jpg'));
+  const image = fs.readFileSync(path.join(ROOT, 'assets', 'sakura-dawn.jpg'));
   const source = path.join(dataDir, 'exports', 'source.jpg');
   fs.mkdirSync(path.dirname(source), { recursive: true });
   fs.writeFileSync(source, image);

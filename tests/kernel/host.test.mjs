@@ -37,7 +37,7 @@ const TOKENS = {
   dim: 'rgba(255,255,255,0.16)',
   foreground: '#1c1c1e',
   foregroundSubtle: 'rgba(28,28,30,0.72)',
-  foregroundSubtlest: 'rgba(28,28,30,0.58)',
+  foregroundSubtlest: 'rgba(28,28,30,0.68)',
   border: 'rgba(0,0,0,0.12)',
   cardBorder: 'rgba(0,0,0,0.14)',
   inputBorder: 'rgba(0,0,0,0.16)',
@@ -58,6 +58,7 @@ test('host profile: version support and parameter clamping', () => {
   assert.equal(params.zoom, 100);
   assert.equal(params.accent, '#6f9275');
   assert.equal(params.safe, 'auto');
+  assert.equal(normalizeThemeParams({ safe: 'off' }).safe, 'off');
 });
 
 test('host css: generated injection uses only whitelisted shape', () => {
@@ -233,7 +234,44 @@ test('host css: dual-mode blocks carry separate surfaces and foreground tokens',
   assert.match(css, /--color-border: rgba\(0,0,0,0\.12\) !important/);
   assert.match(css, /background: var\(--bb-dim\)/);
   assert.match(css, /background: var\(--bb-safe\)/);
-  assert.match(css, /filter: blur\(2px\)/);
+  assert.match(css, /--bb-safe: linear-gradient\(90deg, rgba\(255,255,255,0\.10\) 0px, rgba\(255,255,255,0\.10\) 260px, transparent 420px\)/);
+  assert.match(css, /filter: blur\(0px\)/);
+  assert.match(css, /--bb-text-shadow: 0 1px 2px rgba\(0,0,0,0\.60\), 0 0 1px rgba\(0,0,0,0\.55\), 0 0 6px rgba\(0,0,0,0\.45\)/);
+  assert.match(css, /--bb-text-shadow: 0 1px 2px rgba\(255,255,255,0\.65\), 0 0 1px rgba\(255,255,255,0\.60\), 0 0 6px rgba\(255,255,255,0\.45\)/);
+  assert.match(css, /text-shadow: var\(--bb-text-shadow\)/);
+});
+
+test('host css: backdrop blur follows the task preset', () => {
+  const build = (task) => buildThemeCss({
+    params: normalizeThemeParams({ task }),
+    media: { kind: 'image', url: 'file:///C:/data/media.jpg' },
+    tokens: TOKENS,
+    mode: 'light'
+  });
+
+  const focus = build('focus');
+  const ambient = build('ambient');
+  const auto = build();
+
+  assert.ok(focus.includes('filter: blur(10px);'));
+  assert.ok(ambient.includes('filter: blur(0px);'));
+  assert.ok(auto.includes('filter: blur(0px);'));
+  assert.ok(!focus.includes('filter: blur(0px);'));
+  assert.ok(focus.includes('backdrop-filter: blur(26px)'));
+  assert.ok(auto.includes('backdrop-filter: blur(0px)'));
+});
+
+test('host css: safe overlay guards the left rail and can be disabled', () => {
+  const build = (safe) => buildThemeCss({
+    params: normalizeThemeParams({ safe }),
+    media: { kind: 'image', url: 'file:///C:/data/media.jpg' },
+    tokens: TOKENS,
+    mode: 'light'
+  });
+
+  assert.ok(build('off').includes('--bb-safe: transparent;'));
+  assert.ok(build('left').includes('linear-gradient(90deg, rgba(255,255,255,0.10) 0px'));
+  assert.ok(build('right').includes('linear-gradient(270deg, rgba(255,255,255,0.10) 0px'));
 });
 
 test('host platform: luminance raises panel alpha on bright wallpapers', async () => {
@@ -263,10 +301,17 @@ test('host platform: luminance raises panel alpha on bright wallpapers', async (
   assert.match(bright.dark.panel, /^rgba\(18,18,20,0\./);
   assert.match(bright.light.panel, /^rgba\(255,255,255,0\./);
   assert.ok(bright.light.panel !== bright.dark.panel);
+  assert.match(bright.dark.foregroundSubtlest, /0\.70/);
+  assert.match(bright.light.foregroundSubtlest, /0\.68/);
+  assert.ok(dim.luminance.darkDim >= 0.06);
+  const scrimAlpha = (value) => Number(value.match(/,(0\.\d+)\)$/)[1]);
+  assert.ok(scrimAlpha(bright.dark.scrim) >= 0.30);
+  assert.ok(scrimAlpha(bright.light.scrim) >= 0.26);
+  assert.ok(scrimAlpha(bright.dark.scrim) >= scrimAlpha(dim.dark.scrim));
 });
 
 test('host platform: luminance analysis returns a 4x3 grid', async () => {
-  const file = path.join(ROOT, 'assets', 'original.jpg');
+  const file = path.join(ROOT, 'assets', 'sakura-dawn.jpg');
   const result = await runPowerShellJson('theme/luminance.ps1', { appRoot: ROOT, args: ['-Path', file] });
 
   assert.equal(result.ok, true);

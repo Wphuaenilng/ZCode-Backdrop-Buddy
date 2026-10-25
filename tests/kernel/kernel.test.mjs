@@ -6,10 +6,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createKernel } from '../../kernel/app/kernel.mjs';
 import { createLogger } from '../../kernel/util/logger.mjs';
+import { resolveTools } from '../../kernel/media/tooling.mjs';
 import { PROTOCOL_VERSION, METHODS } from '../../shared/protocol/constants.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const IMAGE = path.join(ROOT, 'assets', 'original.jpg');
+const IMAGE = path.join(ROOT, 'assets', 'sakura-dawn.jpg');
+const tools = resolveTools();
 
 function request(id, method, params = {}) {
   return { v: PROTOCOL_VERSION, id, type: 'request', method, params };
@@ -65,8 +67,7 @@ test('kernel: full theme lifecycle, import, media and settings', async (t) => {
 
   const initial = await call(METHODS.THEME_LIST);
   assert.equal(initial.ok, true);
-  assert.equal(initial.data.themes.length, 20);
-  assert.ok(initial.data.themes.every((theme) => theme.source === 'builtin'));
+  assert.equal(initial.data.themes.length, 0);
 
   const saved = await call(METHODS.THEME_SAVE, { name: '测试主题', tags: ['艺术'], params: { accent: '#123456' } });
   assert.equal(saved.ok, true);
@@ -77,14 +78,14 @@ test('kernel: full theme lifecycle, import, media and settings', async (t) => {
   assert.equal(fetched.ok, true);
   assert.equal(fetched.data.theme.name, '测试主题');
 
-  const applied = await call(METHODS.THEME_APPLY, { themeId: 'forest' });
+  const applied = await call(METHODS.THEME_APPLY, { themeId: savedId });
   assert.equal(applied.ok, true);
-  assert.equal(applied.data.themeId, 'forest');
+  assert.equal(applied.data.themeId, savedId);
   assert.equal(applied.data.dryRun, true);
 
   let status = await call(METHODS.STATUS_GET);
   assert.equal(status.data.running, true);
-  assert.equal(status.data.theme.themeId, 'forest');
+  assert.equal(status.data.theme.themeId, savedId);
   assert.equal(status.data.host.running, true);
 
   const paused = await call(METHODS.THEME_PAUSE);
@@ -114,6 +115,13 @@ test('kernel: full theme lifecycle, import, media and settings', async (t) => {
   assert.equal(settings.data.settings.selectedThemeId, savedId);
   assert.equal(settings.data.settings.applyOnStart, true);
 
+  const hostPath = await call(METHODS.SETTINGS_SET, { settings: { zcodePath: 'E:\\ZCode\\ZCode.exe' } });
+  assert.equal(hostPath.ok, true);
+  assert.equal(hostPath.data.settings.zcodePath, 'E:\\ZCode\\ZCode.exe');
+  const hostPathCleared = await call(METHODS.SETTINGS_SET, { settings: { zcodePath: null } });
+  assert.equal(hostPathCleared.ok, true);
+  assert.equal(hostPathCleared.data.settings.zcodePath, null);
+
   const imported = await call(METHODS.THEME_IMPORT, {
     name: '导入测试',
     tags: ['艺术'],
@@ -127,9 +135,15 @@ test('kernel: full theme lifecycle, import, media and settings', async (t) => {
   assert.ok(mediaTheme.media.width <= 1400);
   assert.ok(mediaTheme.media.height <= 1400);
   assert.ok(mediaTheme.media.file);
-  assert.equal(mediaTheme.media.thumb, 'thumb.jpg');
+  // 缩略图生成依赖 ffmpeg（README：ffmpeg 为可选依赖），缺失时 media.thumb 为 null
+  if (tools.ffmpeg) {
+    assert.equal(mediaTheme.media.thumb, 'thumb.jpg');
+    assert.match(mediaTheme.media.thumbUrl, /thumb\.jpg$/);
+  } else {
+    assert.equal(mediaTheme.media.thumb, null);
+    assert.equal(mediaTheme.media.thumbUrl, null);
+  }
   assert.match(mediaTheme.media.url, /^https:\/\/media\.backdropbuddy\.invalid\/user\//);
-  assert.match(mediaTheme.media.thumbUrl, /thumb\.jpg$/);
 
   const mediaUrl = await call(METHODS.MEDIA_URL, {
     source: 'user',

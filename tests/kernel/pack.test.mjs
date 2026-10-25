@@ -71,8 +71,8 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
   const hello = await call(METHODS.SYSTEM_HELLO);
   assert.equal(hello.ok, true);
   const listed = await call(METHODS.THEME_LIST);
-  assert.equal(listed.data.themes.length, 23);
-  for (const id of ['local-original', 'local-video', 'local-test']) {
+  assert.equal(listed.data.themes.length, 41);
+  for (const id of ['sakura-dawn', 'silver-glass-dream', 'preset-cold-elegance']) {
     const theme = listed.data.themes.find((item) => item.id === id);
     assert.ok(theme, `missing ${id}`);
     assert.ok(theme.media, `${id} media missing`);
@@ -81,8 +81,8 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
   const settings = await call(METHODS.SETTINGS_GET);
   assert.equal(settings.data.settings.localAssetsSeeded, true);
 
-  const source = listed.data.themes.find((item) => item.id === 'local-original');
-  const packPath = path.join(dataDir, 'exports', 'local-original.bbskin');
+  const source = listed.data.themes.find((item) => item.id === 'sakura-dawn');
+  const packPath = path.join(dataDir, 'exports', 'sakura-dawn.bbskin');
   const exported = await call(METHODS.THEME_EXPORT, { themeId: source.id, destPath: packPath });
   assert.equal(exported.ok, true);
   assert.equal(exported.data.format, 'bbskin');
@@ -109,7 +109,7 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
     const call2 = (method, params = {}) => second.handle(request(`p5b-${++secondSeq}`, method, params));
     await call2(METHODS.SYSTEM_HELLO);
     const list2 = await call2(METHODS.THEME_LIST, { source: 'user' });
-    assert.equal(list2.data.themes.length, 4);
+    assert.equal(list2.data.themes.length, 42);
     const status = await call2(METHODS.STATUS_GET);
     assert.equal(status.data.running, true);
     assert.equal(status.data.theme.themeId, copy.id);
@@ -117,14 +117,16 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
     assert.equal(settings2.data.settings.selectedThemeId, copy.id);
     assert.equal(settings2.data.settings.localAssetsSeeded, true);
 
-    const pack2 = path.join(dataDir, 'exports', 'forest.bbskin');
-    const forestExport = await call2(METHODS.THEME_EXPORT, { themeId: 'forest', destPath: pack2 });
-    assert.equal(forestExport.ok, true);
-    assert.equal(forestExport.data.entries, 2);
-    const forestImport = await call2(METHODS.THEME_IMPORT, { path: pack2, name: '森林副本' });
-    assert.equal(forestImport.ok, true);
-    assert.equal(forestImport.data.theme.name, '森林副本');
-    assert.equal(forestImport.data.theme.media, null);
+    const saved = await call2(METHODS.THEME_SAVE, { name: '参数主题', tags: ['艺术'], params: { accent: '#445566' } });
+    assert.equal(saved.ok, true);
+    const pack2 = path.join(dataDir, 'exports', 'saved.bbskin');
+    const savedExport = await call2(METHODS.THEME_EXPORT, { themeId: saved.data.theme.id, destPath: pack2 });
+    assert.equal(savedExport.ok, true);
+    assert.equal(savedExport.data.entries, 2);
+    const savedImport = await call2(METHODS.THEME_IMPORT, { path: pack2, name: '森林副本' });
+    assert.equal(savedImport.ok, true);
+    assert.equal(savedImport.data.theme.name, '森林副本');
+    assert.equal(savedImport.data.theme.media, null);
   } finally {
     await second.close();
   }

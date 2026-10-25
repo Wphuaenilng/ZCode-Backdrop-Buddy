@@ -2,11 +2,11 @@
 
 BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换肤：选一张图片或一段视频，应用为 ZCode 的背景与配色，随时暂停、恢复原貌。所有主题与素材只保存在本机，不联网、不上传。
 
-当前版本：**1.1.0** · 发布者：钧天造物（Juntian Works）
+当前版本：**1.1.1** · 发布者：钧天造物（Juntian Works）
 
 ## 功能
 
-- 20 个内置配色主题 + 3 个随包本地素材主题（图片、视频）
+- 41 个随包壁纸主题（图片、视频，取自 Codex Dream Skin 预设库）
 - 导入图片或视频，自动生成缩略图、探测媒体信息并按需压缩
 - 应用 / 暂停 / 继续 / 重置 / 恢复原貌
 - `.bbskin` 主题包导入与导出（ZIP：`pack.json` + `theme.json` + 媒体）
@@ -32,7 +32,7 @@ BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换�
 
 ## 安装
 
-运行 `BackdropBuddy-Setup-1.1.0.exe`：
+运行 `BackdropBuddy-Setup-1.1.1.exe`：
 
 - **per-user 安装，不需要管理员权限**
 - 默认目录：`%LOCALAPPDATA%\Programs\BackdropBuddy`
@@ -42,7 +42,7 @@ BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换�
 静默安装：
 
 ```bat
-BackdropBuddy-Setup-1.1.0.exe /VERYSILENT /CURRENTUSER /NORESTART
+BackdropBuddy-Setup-1.1.1.exe /VERYSILENT /CURRENTUSER /NORESTART
 ```
 
 卸载：Windows 设置 → 应用 → BackdropBuddy。**默认保留用户主题与设置**；卸载向导会询问是否一并删除，静默卸载可加 `/PURGEDATA=1` 强制清除。
@@ -58,7 +58,7 @@ BackdropBuddy 通过 Chrome DevTools Protocol（CDP，默认端口 9229）连接
 ```
 
 - 默认路径为 `F:\shop\ZCode\ZCode.exe`；找不到时程序会自动搜索运行中的 ZCode、注册表卸载信息和开始菜单快捷方式
-- 便携版或自定义安装仍找不到时，设置环境变量 `ZCODE_PATH` 指向 `ZCode.exe`，然后重启 BackdropBuddy
+- 便携版或自定义安装仍找不到时，在「设置 → 应用设置 → ZCode 位置」填写 `ZCode.exe` 的完整路径，或设置环境变量 `ZCODE_PATH`，然后重启 BackdropBuddy
 - 端口被占用时可用 `ZCODE_PORT` 修改（需与 ZCode 启动参数一致）
 
 建议为 ZCode 新建一个带参数的快捷方式，专门用于配合 BackdropBuddy。若 BackdropBuddy 提示“调试端口未开放”，按上面的步骤重启 ZCode 即可。
@@ -69,7 +69,7 @@ BackdropBuddy 通过 Chrome DevTools Protocol（CDP，默认端口 9229）连接
 
 1. **控制台**：左侧主题库（全部 / 内置 / 我的），中间宿主预览，右侧应用、暂停/继续、重置、恢复。
 2. **导入**：选择图片或视频；可选主题名与参数，保存到“我的主题”。
-3. **设置**：外观参数、我的主题改名、托盘行为、减弱动效与启动自动应用、自动切换规则（每天到点 / 宿主明暗 / 系统明暗 → 指定主题）、运行信息。主题包导入导出入口在控制台工具栏。
+3. **设置**：外观参数、我的主题改名、托盘行为、ZCode 位置、减弱动效与启动自动应用、自动切换规则（每天到点 / 宿主明暗 / 系统明暗 → 指定主题）、运行信息。主题包导入导出入口在控制台工具栏。
 4. **接入宿主**：先用 `--remote-debugging-port=<端口>` 启动目标程序（WebView2 宿主也可以设 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<端口>`），在这里填端口做只读检测 → 到目标窗口里点选根容器与要透明化的面板 → 选背景与文字变量（**没有 CSS 变量的宿主勾「这个宿主没有 CSS 变量」**，改用「文字元素」手填选择器上色；「不要换肤的窗口」填只在该窗口出现的选择器，比如桌宠的 `.pet-root`）→ 试穿一次（应用后自动恢复）→ 保存为自定义宿主。切换宿主用环境变量 `BACKDROPBUDDY_HOST=<id>`，默认 `zcode`。
 
 应用主题只作用于目标应用正在运行的渲染进程：注入固定 ID 的样式与背景层，恢复时逐项撤销并校验。BackdropBuddy **不修改宿主安装目录中的任何文件**。
@@ -129,9 +129,9 @@ powershell -ExecutionPolicy Bypass -File build\package.ps1
 
 产物在 `build\out\`：
 
-- `BackdropBuddy-1.1.0\`：可直接运行的完整目录
-- `BackdropBuddy-1.1.0.zip`：便携包
-- `BackdropBuddy-Setup-1.1.0.exe`：per-user 安装包
+- `BackdropBuddy-1.1.1\`：可直接运行的完整目录
+- `BackdropBuddy-1.1.1.zip`：便携包
+- `BackdropBuddy-Setup-1.1.1.exe`：per-user 安装包
 - `manifest.json`、`SHA256SUMS.txt`、`build.json`
 
 ## 已知限制
@@ -139,7 +139,6 @@ powershell -ExecutionPolicy Bypass -File build\package.ps1
 - 仅支持 ZCode 单宿主；其他 Electron 应用留待后续版本
 - 需要 ZCode 以调试端口启动；不支持自动重启已在运行的 ZCode
 - 安装包与可执行文件未做代码签名，SmartScreen 可能提示“未知发布者”
-- `applyOnStart` / `reducedMotion` 仅写入配置文件，暂无界面与消费逻辑（计划 V1.1 实现）
 - 主题的动画与视频播放遵循 ZCode 页面自身策略；系统“减少动态效果”不会自动停用
 
 ## 文档

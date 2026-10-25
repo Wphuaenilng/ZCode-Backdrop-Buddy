@@ -13,7 +13,8 @@ const SAFES = [
   { value: 'auto', label: '自动' },
   { value: 'left', label: '左侧' },
   { value: 'right', label: '右侧' },
-  { value: 'center', label: '居中' }
+  { value: 'center', label: '居中' },
+  { value: 'off', label: '关闭' }
 ];
 
 const TASKS = [
@@ -22,12 +23,17 @@ const TASKS = [
   { value: 'focus', label: '聚焦' }
 ];
 
-export default function SettingsView({ themes, themeId, params, native, minimizeToTray, onMinimizeToTray, prefs, onPreference, schedule, onSaveRule, onRemoveRule, onSelect, onSave, onCancel }) {
+export default function SettingsView({ themes, themeId, params, native, minimizeToTray, onMinimizeToTray, prefs, onPreference, onSaveHostPath, schedule, onSaveRule, onRemoveRule, onSelect, onSave, onCancel }) {
   const [form, setForm] = useState(() => normalizeParams(params));
   const theme = themes.find((item) => item.id === themeId) || null;
   const [name, setName] = useState(() => theme?.name || '');
   const editable = !!theme && !theme.builtin;
   const [draft, setDraft] = useState({ id: null, kind: 'time', at: '22:30', dark: true, themeId: themeId });
+  const [hostPath, setHostPath] = useState(() => prefs?.zcodePath || '');
+
+  useEffect(() => {
+    setHostPath(prefs?.zcodePath || '');
+  }, [prefs?.zcodePath]);
 
   useEffect(() => {
     setForm(normalizeParams(params));
@@ -145,6 +151,31 @@ export default function SettingsView({ themes, themeId, params, native, minimize
                 减弱动效（视频主题改用首帧静图）
               </label>
               <p className="note">开启后不再往宿主插入播放中的视频，改用主题已有的首帧图；正在运行的主题会立刻重放一次。图片与纯渐变主题不受影响。</p>
+
+              <div className="field" style={{ marginTop: 12 }}>
+                <label htmlFor="setZcodePath">ZCode 位置（可选）</label>
+                <input
+                  id="setZcodePath"
+                  className="input"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="留空 = 自动搜索（运行进程 / 注册表 / 开始菜单）"
+                  value={hostPath}
+                  onChange={(event) => setHostPath(event.target.value)}
+                  data-testid="set-zcode-path"
+                />
+                <div className="save-row">
+                  <button
+                    type="button"
+                    className="btn dark"
+                    onClick={() => onSaveHostPath && onSaveHostPath(hostPath)}
+                    data-testid="save-zcode-path"
+                  >
+                    保存位置
+                  </button>
+                </div>
+                <p className="note">ZCode 装在非常规位置、自动搜索失败时，在这里填 ZCode.exe 的完整路径（例如 <code>E:\ZCode\ZCode.exe</code>）；修改后重启 BackdropBuddy 生效，留空恢复自动搜索。环境变量 ZCODE_PATH 优先于此设置。</p>
+              </div>
             </div>
           ) : null}
 

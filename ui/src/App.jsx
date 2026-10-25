@@ -98,7 +98,7 @@ export default function App() {
   const [recovery, setRecovery] = useState(null);
   const [recoveryDismissed, setRecoveryDismissed] = useState(null);
   const [shellSettings, setShellSettings] = useState({ minimizeToTray: false });
-  const [prefs, setPrefs] = useState({ applyOnStart: false, reducedMotion: false });
+  const [prefs, setPrefs] = useState({ applyOnStart: false, reducedMotion: false, zcodePath: null });
   const [schedule, setSchedule] = useState({ rules: [], nextTriggerAt: null, wakeAt: null });
   const [applyBusy, setApplyBusy] = useState(false);
   const [restartPrompt, setRestartPrompt] = useState(null);
@@ -228,7 +228,7 @@ export default function App() {
         if (settings.ok) {
           const stored = settings.data?.settings || {};
           const overrides = stored.builtinOverrides;
-          setPrefs({ applyOnStart: !!stored.applyOnStart, reducedMotion: !!stored.reducedMotion });
+          setPrefs({ applyOnStart: !!stored.applyOnStart, reducedMotion: !!stored.reducedMotion, zcodePath: stored.zcodePath || null });
           setLibrary((current) => ({
             ...current,
             ...(stored.selectedThemeId ? { selectedId: stored.selectedThemeId } : {}),
@@ -367,14 +367,30 @@ export default function App() {
       return;
     }
 
-    setPrefs({
+    setPrefs((current) => ({
+      ...current,
       applyOnStart: !!result.data?.settings?.applyOnStart,
       reducedMotion: !!result.data?.settings?.reducedMotion
-    });
+    }));
     const note = result.data?.reapplyError
       ? '（当前皮肤重放失败，下次应用时生效：' + (result.data.reapplyError.message || '') + '）'
       : '';
     showToast((labels[key] || '设置已保存') + note);
+  }, [native, bridge, showToast]);
+
+  const saveZcodePath = useCallback(async (value) => {
+    if (!native) return false;
+
+    const next = value && value.trim() ? value.trim() : null;
+    const result = await bridge.request('settings.set', { settings: { zcodePath: next } });
+    if (!result.ok) {
+      showToast('保存失败：' + (result.error?.message || result.error?.code || '未知错误'));
+      return false;
+    }
+
+    setPrefs((current) => ({ ...current, zcodePath: result.data?.settings?.zcodePath ?? null }));
+    showToast(next ? 'ZCode 位置已保存，重启 BackdropBuddy 后生效' : '已恢复自动搜索，重启 BackdropBuddy 后生效');
+    return true;
   }, [native, bridge, showToast]);
 
   const setScheduleFrom = useCallback((data) => {
@@ -1110,6 +1126,7 @@ export default function App() {
             onMinimizeToTray={setMinimizeToTray}
             prefs={prefs}
             onPreference={setPreference}
+            onSaveHostPath={saveZcodePath}
             schedule={schedule}
             onSaveRule={saveRule}
             onRemoveRule={removeRule}

@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-BackdropBuddy 1.1.0 bundles or embeds the following third-party components.
+BackdropBuddy 1.1.1 bundles or embeds the following third-party components.
 Full license texts are shipped in the `licenses/` directory and, for source
 components, in the referenced packages.
 
@@ -62,7 +62,7 @@ embedded in `ui/dist/index.html` only to the extent emitted by the bundler.
 
 - Copyright (C) 1997-2026 Jordan Russell; portions Copyright (C) 2000-2026
   Martijn Laan.
-- Inno Setup is free software used to produce `BackdropBuddy-Setup-1.1.0.exe`.
+- Inno Setup is free software used to produce `BackdropBuddy-Setup-1.1.1.exe`.
 - License information: https://jrsoftware.org/islicense.php
 - Inno Setup itself is not redistributed as a standalone product.
 
@@ -85,9 +85,19 @@ builds are GPL builds) apply.
 
 ## Assets
 
-The three sample themes (`assets/original.jpg`, `assets/original.mp4`,
-`assets/测试233.jpg`) are provided by the project owner for use with
-BackdropBuddy and are not third-party open-source assets.
+The default wallpapers under `assets/` are taken from the
+[Codex Dream Skin](https://github.com/Fei-Away/Codex-Dream-Skin) project
+(© 2026 Codex Dream Skin Studio contributors, MIT License). The MIT license
+covers the software and its abstract/demo artwork; `preset-gothic-void-crusade.jpg`
+was contributed by seansong-ideogram under the same project license.
+
+Person, character, and franchise imagery included in that project's presets
+(for example `arina-hashimoto.jpg`, the `ergouzi-*` illustrations, and similar
+portrait/anime artwork) is explicitly **excluded** from the upstream MIT license
+and is treated here as maintainer-supplied local reference material only:
+it is not covered by this repository's license and must not be redistributed
+without an independent rights review, mirroring the restrictions stated in the
+upstream `NOTICE.md`.
 
 ## Host application
 

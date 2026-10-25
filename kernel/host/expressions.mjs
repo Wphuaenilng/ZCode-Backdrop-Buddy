@@ -100,8 +100,12 @@ export function injectionExpression(p, { css, themeId, media }) {
         video.playsInline = true;
         video.setAttribute('aria-hidden', 'true');
         video.setAttribute('data-bb', '1');
-        layer.parentNode.insertBefore(video, layer.nextSibling);
+        // 必须插在遮罩层之前：两者同为 z-index:0，按 DOM 顺序叠放，
+        // 视频在后会盖住层的 ::before/::after 调光遮罩，dim/safe 就全部失效
+        parent.insertBefore(video, layer);
       }
+      // 旧版本注入的视频排在层之后，重 apply 时拉回正确位置
+      if (video.nextElementSibling !== layer) parent.insertBefore(video, layer);
       if (video.dataset.bbUrl !== MEDIA.url) {
         video.dataset.bbUrl = MEDIA.url;
         video.src = MEDIA.url;
