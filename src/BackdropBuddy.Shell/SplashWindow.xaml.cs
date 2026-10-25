@@ -11,23 +11,45 @@ using BackdropBuddy.Shell.Infrastructure;
 
 namespace BackdropBuddy.Shell
 {
+    /// <summary>
+    /// 事件驱动的启动窗：壳在五个真实里程碑上推进度（内核进程 → 内核 hello → WebView2 →
+    /// 页面导航 → UI 就绪），动画不决定时长；交接条件是 UI 就绪且已展示 MinShownMs。
+    /// 同一里程碑停留超过 PhaseStallMs 才切"等待"文案；ui.ready 信号超时则回退到导航完成即交接。
+    /// </summary>
     public partial class SplashWindow : Window
     {
-        private static readonly Brush Ink = Frozen(Color.FromRgb(0x1E, 0x20, 0x24));
-        private static readonly Brush Ink2 = Frozen(Color.FromRgb(0x4D, 0x53, 0x5B));
+        public const int PhaseKernel = 1;      // 内核进程已拉起
+        public const int PhaseHello = 2;       // 内核 hello 应答（含 ZCode 发现，主题库可用）
+        public const int PhaseWebview = 3;     // WebView2 环境就绪
+        public const int PhaseNavigated = 4;   // 页面导航完成
+        public const int PhaseUiReady = 5;     // UI 真正可交互（React 完成首屏数据）
+
+        private const int MinShownMs = 700;             // 最短展示：再快也让人看清品牌帧
+        private const int HandoffFadeMs = 180;          // 交接淡出
+        private const int PhaseStallMs = 1500;          // 里程碑停留多久后切等待文案
+        private const int UiReadyFallbackMs = 6000;     // ui.ready 迟到多久后按导航完成交接
+
+        private static readonly string[] PhaseZh =
+            { null, "正在启动内核", "正在准备主题库", "正在启动界面", "正在渲染界面", "准备就绪" };
+        private static readonly string[] PhaseEn =
+            { null, "STARTING KERNEL", "PREPARING THEMES", "LOADING INTERFACE", "RENDERING INTERFACE", "READY" };
+
+        private static readonly Brush Ink = Frozen(Color.FromRgb(0x4B, 0x54, 0x5F));
+        private static readonly Brush Ink2 = Frozen(Color.FromRgb(0x7D, 0x89, 0x95));
         private static readonly FontFamily ZhFont = new FontFamily("Microsoft YaHei");
-        private static readonly FontFamily UiFont = new FontFamily("Segoe UI, Microsoft YaHei");
+        private static readonly FontFamily MonoFont = new FontFamily("Consolas");
 
         private readonly Stopwatch _shown = new Stopwatch();
-        private Storyboard _intro;
+        private readonly Stopwatch _phaseSince = new Stopwatch();
+        private DispatcherTimer _stallTimer;
         private bool _attached;
         private bool _closed;
         private bool _aborted;
-        private bool _ready;
         private bool _reduced;
-        private bool _waiting;
         private bool _finalizing;
         private bool _skipping;
+        private bool _stalled;
+        private int _phase;
 
         public SplashWindow()
         {
@@ -62,37 +84,53 @@ namespace BackdropBuddy.Shell
             }
         }
 
-        public void NotifyReady()
+        /// <summary>里程碑推进（1–5）。可以任意线程调用；只前进不后退。</summary>
+        public void NotifyPhase(int phase)
         {
-            if (_closed || _aborted) return;
-            _ready = true;
-            Logs.Shell.Write("INFO", "splash ready");
-
-            if (_reduced)
+            Run(() =>
             {
-                ExitReduced();
-                return;
-            }
-            if (_waiting && !_finalizing) _ = ReadyThenHandoffAsync();
+                if (_closed || _aborted || _finalizing) return;
+                if (phase < PhaseKernel || phase > PhaseUiReady || phase <= _phase) return;
+                _phase = phase;
+                _phaseSince.Restart();
+                ClearStall();
+                ApplyPhase(phase);
+                Logs.Shell.Write("INFO", "splash phase " + phase);
+            });
+        }
+
+        /// <summary>UI 真正可用（React 完成首屏数据）。满足最短展示后立即交接。</summary>
+        public void NotifyUiReady()
+        {
+            Run(() =>
+            {
+                if (_closed || _aborted || _finalizing) return;
+                NotifyPhase(PhaseUiReady);
+                if (_reduced)
+                {
+                    ExitReduced();
+                    return;
+                }
+                int wait = (int)(MinShownMs - _shown.ElapsedMilliseconds);
+                if (wait <= 0) BeginHandoff();
+                else _ = HandoffAfterAsync(wait);
+            });
         }
 
         public void SkipNow()
         {
-            RequestSkip();
+            Run(RequestSkip);
         }
 
         public void Abort()
         {
-            if (_closed) return;
-            _aborted = true;
-            Logs.Shell.Write("INFO", "splash aborted");
-            LightOut.Fill = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x15));
-            LightOut.BeginAnimation(UIElement.OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                });
-            CloseAfter(190);
+            Run(AbortNow);
+        }
+
+        private void Run(Action action)
+        {
+            if (Dispatcher.CheckAccess()) action();
+            else Dispatcher.BeginInvoke(action);
         }
 
         private void OnOwnerBoundsChanged(object sender, EventArgs e)
@@ -118,159 +156,355 @@ namespace BackdropBuddy.Shell
             _reduced = !SystemParameters.ClientAreaAnimation ||
                 string.Equals(Environment.GetEnvironmentVariable("BACKDROPBUDDY_REDUCED_MOTION"), "1", StringComparison.Ordinal);
 
+            _phase = PhaseKernel;
+            _phaseSince.Start();
+
             if (_reduced)
             {
-                ShowReduced();
+                ApplyPhase(PhaseKernel);
+                Logs.Shell.Write("INFO", "splash shown reducedMotion=true");
                 return;
             }
 
-            _intro = (Storyboard)FindResource("IntroStoryboard");
-            _intro.Begin(this, true);
+            StartBrandMotion();
+            ApplyPhase(PhaseKernel);
+            StartStallTimer();
             Logs.Shell.Write("INFO", "splash shown");
-            _ = RunSequenceAsync();
         }
 
-        private async Task RunSequenceAsync()
+        private void StartBrandMotion()
         {
-            try
-            {
-                await Delay(1250);
-                if (Stop()) return;
+            var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var easeInOut = new CubicEase { EasingMode = EasingMode.EaseInOut };
 
-                ShowStatusTyped("正在启动本地主题引擎", "STARTING LOCAL THEME ENGINE");
-                SetProgress(0.45);
+            MarkRoot.Opacity = 0;
+            MarkRoot.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(480))
+                {
+                    EasingFunction = easeOut
+                });
 
-                await Delay(650);
-                if (Stop()) return;
+            IconScale.ScaleX = 0.94;
+            IconScale.ScaleY = 0.94;
+            IconScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(600))
+                {
+                    EasingFunction = easeOut
+                });
+            IconScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(600))
+                {
+                    EasingFunction = easeOut
+                });
 
-                if (_ready) await ReadyThenHandoffAsync();
-                else await ShowWaitingAsync();
-            }
-            catch (Exception error)
-            {
-                Logs.Shell.Write("ERROR", "splash sequence failed: " + error);
-                Abort();
-            }
+            BrandCopy.Opacity = 0;
+            BrandCopyShift.Y = 6;
+            BrandCopy.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(460))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(100),
+                    EasingFunction = easeOut
+                });
+            BrandCopyShift.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(6, 0, TimeSpan.FromMilliseconds(500))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(100),
+                    EasingFunction = easeOut
+                });
+
+            OrbitArtwork.Opacity = 0;
+            OrbitScale.ScaleX = 0.96;
+            OrbitScale.ScaleY = 0.96;
+            OrbitArtwork.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(520))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(60),
+                    EasingFunction = easeOut
+                });
+            OrbitScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(640))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(60),
+                    EasingFunction = easeOut
+                });
+            OrbitScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(640))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(60),
+                    EasingFunction = easeOut
+                });
+
+            AnimateCardEntrance(LightCard, LightCardEntrance, 8, 140);
+            AnimateCardEntrance(DarkCard, DarkCardEntrance, -8, 220);
+
+            LightCardFloat.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(0, -2.5, TimeSpan.FromMilliseconds(3200))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(700),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+            DarkCardFloat.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(0, 2.5, TimeSpan.FromMilliseconds(3700))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(850),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+
+            MarkGlow.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.55, 0.85, TimeSpan.FromMilliseconds(3000))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+            BlueArc.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.58, 1, TimeSpan.FromMilliseconds(3600))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+            LightArc.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.48, 0.85, TimeSpan.FromMilliseconds(3800))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(400),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+            GoldArc.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.55, 0.9, TimeSpan.FromMilliseconds(4200))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(900),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
+
+            StartOrbitDot(BlueDotTranslate, 38, 11.5, true);
+            StartOrbitDot(GoldDotTranslate, 229, 16, false);
+
+            StatusDot.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(1100))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = easeInOut
+                });
         }
 
-        private async Task ReadyThenHandoffAsync()
+        private static void AnimateCardEntrance(UIElement card, TranslateTransform shift,
+            double fromY, int delayMs)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            card.Opacity = 0;
+            shift.Y = fromY;
+            card.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(460))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(delayMs),
+                    EasingFunction = ease
+                });
+            shift.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(540))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(delayMs),
+                    EasingFunction = ease
+                });
+        }
+
+        private static void StartOrbitDot(TranslateTransform dot, double startAngle,
+            double seconds, bool clockwise)
+        {
+            var path = BuildOrbitPath(startAngle, clockwise);
+            dot.BeginAnimation(TranslateTransform.XProperty,
+                new DoubleAnimationUsingPath
+                {
+                    PathGeometry = path,
+                    Source = PathAnimationSource.X,
+                    Duration = new Duration(TimeSpan.FromSeconds(seconds)),
+                    RepeatBehavior = RepeatBehavior.Forever
+                });
+            dot.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimationUsingPath
+                {
+                    PathGeometry = path,
+                    Source = PathAnimationSource.Y,
+                    Duration = new Duration(TimeSpan.FromSeconds(seconds)),
+                    RepeatBehavior = RepeatBehavior.Forever
+                });
+        }
+
+        private static PathGeometry BuildOrbitPath(double startAngle, bool clockwise)
+        {
+            var figure = new PathFigure { StartPoint = OrbitPoint(startAngle) };
+            double step = clockwise ? 90 : -90;
+            for (int index = 1; index <= 4; index++)
+            {
+                figure.Segments.Add(new ArcSegment
+                {
+                    Point = OrbitPoint(startAngle + step * index),
+                    Size = new Size(232, 123),
+                    RotationAngle = -11,
+                    IsLargeArc = false,
+                    SweepDirection = clockwise ? SweepDirection.Clockwise : SweepDirection.Counterclockwise,
+                    IsStroked = true
+                });
+            }
+
+            var path = new PathGeometry();
+            path.Figures.Add(figure);
+            path.Freeze();
+            return path;
+        }
+
+        private static Point OrbitPoint(double angle)
+        {
+            double theta = angle * Math.PI / 180;
+            double tilt = -11 * Math.PI / 180;
+            double x = 232 * Math.Cos(theta);
+            double y = 123 * Math.Sin(theta);
+            return new Point(
+                320 + x * Math.Cos(tilt) - y * Math.Sin(tilt),
+                203 + x * Math.Sin(tilt) + y * Math.Cos(tilt));
+        }
+
+        private void ApplyPhase(int phase)
+        {
+            FillStatus(PhaseZh[phase], PhaseEn[phase]);
+
+            if (_reduced)
+            {
+                StatusDot.Opacity = 1;
+                ProgressScale.ScaleX = phase >= PhaseUiReady ? 1.0 : 0.2 * phase;
+                return;
+            }
+
+            if (phase >= PhaseUiReady)
+            {
+                StatusDot.BeginAnimation(UIElement.OpacityProperty, null);
+                StatusDot.Opacity = 1;
+            }
+
+            StatusBlock.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(170))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            StatusShift.BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(3, 0, TimeSpan.FromMilliseconds(190))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+
+            double target = phase >= PhaseUiReady ? 1.0 : 0.2 * phase;
+            ProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(Math.Max(0.04, target),
+                    TimeSpan.FromMilliseconds(phase >= PhaseUiReady ? 140 : 260))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+        }
+
+        private void StartStallTimer()
+        {
+            _stallTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _stallTimer.Tick += (sender, args) =>
+            {
+                if (_closed || _aborted || _finalizing || _reduced) return;
+
+                // ui.ready 迟到（旧界面/信号丢失）：按导航完成即交接，不让启动窗卡死
+                if (_phase >= PhaseNavigated && _phaseSince.ElapsedMilliseconds >= UiReadyFallbackMs)
+                {
+                    Logs.Shell.Write("WARN", "splash ui-ready timeout, handing off at navigation");
+                    NotifyUiReady();
+                    return;
+                }
+
+                if (_stalled || _phaseSince.ElapsedMilliseconds <= PhaseStallMs) return;
+                _stalled = true;
+                FillStatus("仍在准备，请稍候", "STILL WORKING");
+                StatusShift.BeginAnimation(TranslateTransform.YProperty,
+                    new DoubleAnimation(2, 0, TimeSpan.FromMilliseconds(180))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                Logs.Shell.Write("INFO", "splash waiting in phase " + _phase);
+            };
+            _stallTimer.Start();
+        }
+
+        private void ClearStall()
+        {
+            _stalled = false;
+            StatusBlock.BeginAnimation(UIElement.OpacityProperty, null);
+            StatusBlock.Opacity = 1;
+        }
+
+        private async Task HandoffAfterAsync(int waitMs)
+        {
+            await Task.Delay(waitMs);
+            if (_closed || _aborted || _finalizing) return;
+            BeginHandoff();
+        }
+
+        private void BeginHandoff()
         {
             if (_finalizing || _closed || _aborted) return;
             _finalizing = true;
-            Logs.Shell.Write("INFO", "splash ready state");
-
-            await SwapStatusAsync("准备就绪", "READY");
-            SetProgress(1.0);
-
-            await Delay(320);
-            if (Stop()) return;
-            Handoff();
-        }
-
-        private async Task ShowWaitingAsync()
-        {
-            if (_closed || _aborted || _finalizing) return;
-            Logs.Shell.Write("INFO", "splash waiting for renderer");
-            await SwapStatusAsync("等待界面就绪", "WAITING FOR RENDERER");
-            SetProgress(0.82);
-            _waiting = true;
-            if (_ready && !_finalizing) _ = ReadyThenHandoffAsync();
-        }
-
-        private void ShowStatusTyped(string zh, string en)
-        {
-            StatusBlock.Opacity = 1;
-            FillSpaced(StatusZh, zh, 22, Ink, 3.5, ZhFont, FontWeights.Normal, 22, 220, true);
-            FillSpaced(StatusEn, en, 11, Ink2, 2.6, UiFont, FontWeights.Normal, 4, 140, true);
-        }
-
-        private async Task SwapStatusAsync(string zh, string en)
-        {
-            StatusBlock.BeginAnimation(UIElement.OpacityProperty,
-                new DoubleAnimation(0, TimeSpan.FromMilliseconds(120))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                });
-            await Delay(130);
-            if (Stop()) return;
-
-            FillSpaced(StatusZh, zh, 22, Ink, 3.5, ZhFont, FontWeights.Normal, 0, 1, false);
-            FillSpaced(StatusEn, en, 11, Ink2, 2.6, UiFont, FontWeights.Normal, 0, 1, false);
-            StatusBlock.BeginAnimation(UIElement.OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                });
-            await Delay(230);
-        }
-
-        private void SetProgress(double value)
-        {
-            ProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty,
-                new DoubleAnimation(value, TimeSpan.FromMilliseconds(650))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
-                });
-        }
-
-        private async void Handoff()
-        {
-            if (_closed || _aborted) return;
+            StopStallTimer();
             TryActivateOwner();
-            Logs.Shell.Write("INFO", "splash handoff");
+            Logs.Shell.Write("INFO", "splash handoff elapsedMs=" + (int)_shown.ElapsedMilliseconds);
 
             ContentHost.BeginAnimation(UIElement.OpacityProperty,
-                new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(340))
+                new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(HandoffFadeMs))
                 {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
                 });
             LightOut.BeginAnimation(UIElement.OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(380))
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(HandoffFadeMs + 40))
                 {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
                 });
-
-            await Delay(430);
-            if (!_closed) Close();
+            CloseAfter(HandoffFadeMs + 60);
         }
 
-        private void ShowReduced()
+        private void AbortNow()
         {
-            ContentHost.Opacity = 1;
-            MarkGlow.Opacity = 0.5;
-            AppIcon.Opacity = 1;
-            IconScale.ScaleX = 1;
-            IconScale.ScaleY = 1;
-            Reticle.Opacity = 0.55;
-            RetRotate.Angle = 0;
-            WordSub.Opacity = 1;
-            WordSubShift.Y = 0;
-            StatusBlock.Opacity = 1;
-            FillSpaced(StatusZh, "正在启动本地主题引擎", 22, Ink, 3.5, ZhFont, FontWeights.Normal, 0, 1, false);
-            FillSpaced(StatusEn, "STARTING LOCAL THEME ENGINE", 11, Ink2, 2.6, UiFont, FontWeights.Normal, 0, 1, false);
-            ProgressScale.ScaleX = 0.5;
-
-            Logs.Shell.Write("INFO", "splash shown reducedMotion=true");
+            if (_closed) return;
+            _aborted = true;
+            StopStallTimer();
+            Logs.Shell.Write("INFO", "splash aborted");
+            LightOut.Fill = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x15));
+            LightOut.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            CloseAfter(190);
         }
 
         private async void ExitReduced()
         {
             if (_closed || _aborted) return;
-            int wait = Math.Max(0, 500 - (int)_shown.ElapsedMilliseconds);
-            if (wait > 0) await Delay(wait);
+            int wait = Math.Max(0, MinShownMs - (int)_shown.ElapsedMilliseconds);
+            if (wait > 0) await Task.Delay(wait);
             if (_closed || _aborted) return;
 
-            FillSpaced(StatusZh, "准备就绪", 22, Ink, 3.5, ZhFont, FontWeights.Normal, 0, 1, false);
-            FillSpaced(StatusEn, "READY", 11, Ink2, 2.6, UiFont, FontWeights.Normal, 0, 1, false);
+            FillStatus(PhaseZh[PhaseUiReady], PhaseEn[PhaseUiReady]);
             ProgressScale.ScaleX = 1;
-            Logs.Shell.Write("INFO", "splash handoff reduced");
+            Logs.Shell.Write("INFO", "splash handoff reduced elapsedMs=" + (int)_shown.ElapsedMilliseconds);
 
             LightOut.BeginAnimation(UIElement.OpacityProperty,
                 new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140))
                 {
                     EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
                 });
-            await Delay(170);
+            await Task.Delay(170);
             if (!_closed) Close();
         }
 
@@ -279,7 +513,8 @@ namespace BackdropBuddy.Shell
             if (_closed || _aborted || _skipping) return;
             if (_shown.ElapsedMilliseconds < 600) return;
             _skipping = true;
-            Logs.Shell.Write("INFO", "splash skipped");
+            StopStallTimer();
+            Logs.Shell.Write("INFO", "splash skipped elapsedMs=" + (int)_shown.ElapsedMilliseconds);
             TryActivateOwner();
 
             ContentHost.BeginAnimation(UIElement.OpacityProperty,
@@ -299,19 +534,19 @@ namespace BackdropBuddy.Shell
         {
             double width = Math.Max(1, ActualWidth);
             double height = Math.Max(1, ActualHeight);
-            double reticle = Math.Max(360, Math.Min(width * 0.48, height * 0.78));
-            IconStage.Width = reticle;
-            IconStage.Height = reticle;
+            // 视觉稿以 640 × 400 为基准；大窗口只温和放大，小窗口等比收缩。
+            double scale = Math.Min(1.5, Math.Max(0.78, Math.Min(width / 640.0, height / 400.0)));
+            ResponsiveScale.ScaleX = scale;
+            ResponsiveScale.ScaleY = scale;
         }
 
-        private bool Stop()
+        private void StopStallTimer()
         {
-            return _closed || _aborted;
-        }
-
-        private static Task Delay(int milliseconds)
-        {
-            return Task.Delay(milliseconds);
+            if (_stallTimer != null)
+            {
+                _stallTimer.Stop();
+                _stallTimer = null;
+            }
         }
 
         private void TryActivateOwner()
@@ -338,8 +573,15 @@ namespace BackdropBuddy.Shell
             timer.Start();
         }
 
+        private void FillStatus(string zh, string en)
+        {
+            StatusBlock.Opacity = 1;
+            FillSpaced(StatusZh, zh, 11.2, Ink, 0.5, ZhFont);
+            FillSpaced(StatusEn, en, 7.3, Ink2, 0.9, MonoFont);
+        }
+
         private static void FillSpaced(StackPanel host, string text, double size, Brush brush, double spacing,
-            FontFamily family, FontWeight weight, int staggerMs, int fadeMs, bool animate)
+            FontFamily family)
         {
             host.Children.Clear();
             if (string.IsNullOrEmpty(text)) return;
@@ -351,7 +593,7 @@ namespace BackdropBuddy.Shell
                     Text = text[i] == ' ' ? "\u00A0" : text[i].ToString(),
                     FontSize = size,
                     FontFamily = family,
-                    FontWeight = weight,
+                    FontWeight = FontWeights.Normal,
                     Foreground = brush,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, i == text.Length - 1 ? 0 : spacing, 0)
@@ -360,29 +602,6 @@ namespace BackdropBuddy.Shell
                 TextOptions.SetTextFormattingMode(tb,
                     size < 14 ? TextFormattingMode.Display : TextFormattingMode.Ideal);
                 host.Children.Add(tb);
-
-                if (!animate)
-                {
-                    tb.Opacity = 1;
-                    continue;
-                }
-
-                tb.Opacity = 0;
-                var shift = new TranslateTransform(0, size * 0.12);
-                tb.RenderTransform = shift;
-                TimeSpan begin = TimeSpan.FromMilliseconds(i * staggerMs);
-                tb.BeginAnimation(UIElement.OpacityProperty,
-                    new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(fadeMs))
-                    {
-                        BeginTime = begin,
-                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                    });
-                shift.BeginAnimation(TranslateTransform.YProperty,
-                    new DoubleAnimation(size * 0.12, 0, TimeSpan.FromMilliseconds(fadeMs))
-                    {
-                        BeginTime = begin,
-                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                    });
             }
         }
 
@@ -410,6 +629,7 @@ namespace BackdropBuddy.Shell
         private void OnClosed(object sender, EventArgs e)
         {
             _closed = true;
+            StopStallTimer();
             if (_attached)
             {
                 Window owner = Owner;

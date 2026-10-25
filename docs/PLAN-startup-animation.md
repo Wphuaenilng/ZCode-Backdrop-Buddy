@@ -1,6 +1,6 @@
 # 启动动画计划
 
-> 状态：线 B（BackdropBuddy 自身启动动画）已实现并实测；线 A（ZCode 主题启动动画）未执行
+> 状态：线 B（BackdropBuddy 自身启动动画）已实现并实测，2026-10-25 完成事件驱动改造（见 3.1）；线 A（ZCode 主题启动动画）未执行
 > 日期：2026-10-23
 > 范围：ZCode 主题启动动画（主线）+ BackdropBuddy 自身启动动画（支线）
 > 事实来源：ZCode 3.16.x 安装包源码、本机 `shell.log`、BackdropBuddy 现有代码
@@ -64,6 +64,33 @@
 - 实现：`src/BackdropBuddy.Shell/SplashWindow.xaml(.cs)`；主窗与启动窗同为 `#F1F2F6`，不再有黑→白或暖→冷跳变；界面就绪后在收尾阶段交接。
 - 实测（Release，隔离数据目录，1440×900）：splash 首帧约 0.4–0.6s；动画约 3.0–3.5s（WebView2 慢时进入等待态）；常规热启动从进程到界面约 3.6s；600ms 后点击任意位置、SKIP 或 Esc 可跳过；`BACKDROPBUDDY_REDUCED_MOTION=1` 或系统关闭动画时走静态底板（734ms 交接）；错误路径 309ms 退场并显示错误页；第二实例不显示启动窗（exit 0 handoff）。
 - 已知：动画总长比原 1s 版长（按要求放慢）；若需要短版，调 `SplashWindow` 的时间常量即可；只在 96 DPI 实测。
+
+### 3.1 线 B 事件驱动改造（2026-10-25，已实机验收）
+
+固定节拍（1250/650/320ms）改为里程碑状态机：动画不再决定时长，交接条件是「UI 真正就绪 且 已展示 ≥700ms」。
+
+| 里程碑 | 信号来源 | 文案（中/英） |
+| --- | --- | --- |
+| 1 内核进程 | `StartKernel` 成功后 `NotifyPhase(PhaseKernel)` | 正在启动内核 / STARTING KERNEL |
+| 2 内核 hello | 壳侧 `system.hello` 回调（常被 3/4 超车，属正常） | 正在准备主题库 / PREPARING THEMES |
+| 3 WebView2 | `EnsureCoreWebView2Async` 完成 | 正在启动界面 / LOADING INTERFACE |
+| 4 导航完成 | `NavigationCompleted` | 正在渲染界面 / RENDERING INTERFACE |
+| 5 UI 就绪 | React 首屏数据完成（hello + theme.list + settings）后 `bridge.notifyReady()` → 壳 `NotifyUiReady()` | 准备就绪 / READY |
+
+- 常量（`SplashWindow.xaml.cs`）：`MinShownMs=700`、`HandoffFadeMs=180`、`PhaseStallMs=1500`（同一里程碑停留超时切"仍在准备，请稍候"并给状态行呼吸动效）、`UiReadyFallbackMs=6000`（ui.ready 迟到则按导航完成交接，防启动窗卡死）。
+- 视觉：静态完成帧直接上屏（删除 1.35s 入场 Storyboard 与逐字打字机），唯一持续动效为准星 30s/圈慢速旋转；进度条按里程碑 0.2/0.4/0.6/0.8/1.0 跳变。
+- 保留：Esc/点击跳过（600ms 保护）、reducedMotion 静态底板、Abort 错误路径、第二实例不显示启动窗、跟随主窗。
+
+**实测（Release、隔离数据目录、96 DPI）**：
+
+| 场景 | 时序 |
+| --- | --- |
+| 冷启动（播种 41 个本地主题） | phase3 1.5s → phase4 1.6s → 等待文案 3.1s → phase5 3.8s → 交接 **3814ms** |
+| 热启动（已播种） | phase2 339ms → phase3 574ms → phase4 675ms → phase5 956ms → 交接 **956ms**、关闭 1220ms |
+
+对比旧版：动画固定 3.0–3.5s、进程到界面约 3.6s；热启动现在 1.2s 内完成且每一步文案对应真实事件。
+
+**顺带修复**：`ui/src/bridge.js` 两处 `listeners.set(new Set())` 缺 key（应为 `listeners.set(event, new Set())`）——该笔误使 React 挂载时第一个 `bridge.on()` 即抛 TypeError，UI 整页空白、零消息发出（浏览器直开 UI 包用错误捕获页定位，`Cannot read properties of undefined (reading 'add')`）。
 
 以下详细计划只展开线 A；线 B 单独排期。
 

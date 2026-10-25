@@ -67,6 +67,14 @@ function nativeBridge() {
         if (!set.size) listeners.delete(event);
       };
     },
+    // 壳用它判断启动窗何时交接：React 完成首屏数据（hello + 主题列表 + 设置）后调用一次。
+    notifyReady() {
+      try {
+        webview.postMessage({ signal: 'ui.ready' });
+      } catch {
+        /* 启动窗有自己的超时回退，丢了也不影响 */
+      }
+    },
     close() {
       webview.removeEventListener('message', onMessage);
     }
@@ -177,6 +185,7 @@ function mockBridge() {
         if (!set.size) listeners.delete(event);
       };
     },
+    notifyReady() {},
     close() {}
   };
 }

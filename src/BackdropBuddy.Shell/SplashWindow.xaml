@@ -14,205 +14,314 @@
         SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="ClearType">
-    <Window.Resources>
-        <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut"/>
-
-        <Storyboard x:Key="IntroStoryboard">
-            <DoubleAnimation Storyboard.TargetName="Root"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0" To="1" Duration="0:0:0.35"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-
-            <DoubleAnimation Storyboard.TargetName="MarkGlow"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0" To="0.5" BeginTime="0:0:0.20" Duration="0:0:1.00"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-
-            <DoubleAnimation Storyboard.TargetName="AppIcon"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0" To="1" BeginTime="0:0:0.15" Duration="0:0:0.90"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-            <DoubleAnimation Storyboard.TargetName="IconScale"
-                             Storyboard.TargetProperty="ScaleX"
-                             From="0.94" To="1" BeginTime="0:0:0.15" Duration="0:0:1.00"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-            <DoubleAnimation Storyboard.TargetName="IconScale"
-                             Storyboard.TargetProperty="ScaleY"
-                             From="0.94" To="1" BeginTime="0:0:0.15" Duration="0:0:1.00"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-
-            <DoubleAnimation Storyboard.TargetName="Reticle"
-                             Storyboard.TargetProperty="Opacity"
-                             From="0" To="0.55" BeginTime="0:0:0.20" Duration="0:0:0.90"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-            <DoubleAnimation Storyboard.TargetName="RetRotate"
-                             Storyboard.TargetProperty="Angle"
-                             From="0" To="360" BeginTime="0:0:0.20" Duration="0:0:30"
-                             RepeatBehavior="Forever"/>
-
-            <DoubleAnimation Storyboard.TargetName="WordSub" Storyboard.TargetProperty="Opacity"
-                             From="0" To="1" BeginTime="0:0:0.95" Duration="0:0:0.40"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-            <DoubleAnimation Storyboard.TargetName="WordSubShift" Storyboard.TargetProperty="Y"
-                             From="4" To="0" BeginTime="0:0:0.95" Duration="0:0:0.40"
-                             EasingFunction="{StaticResource EaseOutCubic}"/>
-        </Storyboard>
-    </Window.Resources>
-
+    <!-- 动效只负责品牌入场与状态反馈；实际展示时长仍由真实启动里程碑决定。 -->
     <Grid x:Name="Root" ClipToBounds="True" Background="#F1F2F6">
         <Rectangle IsHitTestVisible="False">
             <Rectangle.Fill>
-                <LinearGradientBrush StartPoint="0.1,0" EndPoint="0.55,1">
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0.25,1">
                     <GradientStop Color="#FCFDFE" Offset="0"/>
-                    <GradientStop Color="#F5F7FA" Offset="0.45"/>
+                    <GradientStop Color="#F7F8FB" Offset="0.48"/>
                     <GradientStop Color="#F1F2F6" Offset="1"/>
                 </LinearGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
         <Rectangle IsHitTestVisible="False">
             <Rectangle.Fill>
-                <RadialGradientBrush Center="0.78,0.12" GradientOrigin="0.78,0.12"
-                                     RadiusX="0.9" RadiusY="0.7">
-                    <GradientStop Color="#B8FFFFFF" Offset="0"/>
-                    <GradientStop Color="#00FFFFFF" Offset="0.6"/>
+                <RadialGradientBrush Center="0.5,0.45" GradientOrigin="0.5,0.45"
+                                     RadiusX="0.58" RadiusY="0.58">
+                    <GradientStop Color="#30DDF5FF" Offset="0"/>
+                    <GradientStop Color="#10E8F7FF" Offset="0.42"/>
+                    <GradientStop Color="#00F1F2F6" Offset="1"/>
                 </RadialGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
-
-        <Grid IsHitTestVisible="False" Opacity="0.45">
-            <Rectangle HorizontalAlignment="Right" VerticalAlignment="Top"
-                       Width="160" Height="520" Margin="0,44,64,0"
-                       Stroke="#1E202412" StrokeThickness="1">
-                <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#60FFFFFF" Offset="0"/>
-                        <GradientStop Color="#00FFFFFF" Offset="1"/>
-                    </LinearGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-            <Rectangle HorizontalAlignment="Right" VerticalAlignment="Top"
-                       Width="100" Height="360" Margin="0,44,252,0"
-                       Stroke="#1E202410" StrokeThickness="1">
-                <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#48FFFFFF" Offset="0"/>
-                        <GradientStop Color="#00FFFFFF" Offset="1"/>
-                    </LinearGradientBrush>
-                </Rectangle.Fill>
-            </Rectangle>
-        </Grid>
-
         <Rectangle IsHitTestVisible="False">
             <Rectangle.Fill>
-                <RadialGradientBrush Center="0.5,0.42" GradientOrigin="0.5,0.42"
-                                     RadiusX="0.64" RadiusY="0.58">
-                    <GradientStop Color="#00000000" Offset="0.55"/>
-                    <GradientStop Color="#0A000000" Offset="1"/>
+                <RadialGradientBrush Center="0.88,0.08" GradientOrigin="0.88,0.08"
+                                     RadiusX="0.5" RadiusY="0.5">
+                    <GradientStop Color="#0CC6A15B" Offset="0"/>
+                    <GradientStop Color="#00C6A15B" Offset="1"/>
                 </RadialGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
 
         <Grid x:Name="ContentHost">
-            <!-- 图标与准星共用同一个中心 -->
-            <Grid x:Name="IconStage" Width="648" Height="648"
+            <!-- 固定设计画布：640 × 400；ApplyLayout 只负责整体等比缩放。 -->
+            <Grid x:Name="BrandLockup" Width="640" Height="400"
                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                  Margin="0,-10,0,0">
-                <Grid x:Name="Reticle" Opacity="0" IsHitTestVisible="False">
-                    <Viewbox Stretch="Uniform">
-                        <Canvas Width="400" Height="400">
-                            <Canvas Width="400" Height="400">
-                                <Canvas.RenderTransform>
-                                    <RotateTransform x:Name="RetRotate" CenterX="200" CenterY="200"/>
-                                </Canvas.RenderTransform>
-                                <Path Data="M103.6,314.9 A150,150 0 1 1 296.4,314.9"
-                                      Stroke="#1E2024" StrokeThickness="1.2" Fill="{x:Null}" Opacity="0.4"/>
-                                <Ellipse Canvas.Left="291.4" Canvas.Top="309.9" Width="10" Height="10"
-                                         Fill="#0EB0FC" Opacity="0.75"/>
-                            </Canvas>
-                            <Ellipse Canvas.Left="149.2" Canvas.Top="129.2" Width="5.6" Height="5.6"
-                                     Fill="#C6A15B" Opacity="0.65"/>
-                            <Ellipse Canvas.Left="249.2" Canvas.Top="265.2" Width="5.6" Height="5.6"
-                                     Fill="#1E2024" Opacity="0.35"/>
-                            <Ellipse Canvas.Left="275.2" Canvas.Top="147.2" Width="5.6" Height="5.6"
-                                     Fill="#C6A15B" Opacity="0.65"/>
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="ResponsiveScale" ScaleX="1" ScaleY="1"/>
+                </Grid.RenderTransform>
+
+                <Canvas Width="640" Height="400" IsHitTestVisible="False">
+                    <Canvas.Opacity>0.9</Canvas.Opacity>
+                    <Ellipse Canvas.Left="34" Canvas.Top="58" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="46" Canvas.Top="58" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="58" Canvas.Top="58" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="70" Canvas.Top="58" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="34" Canvas.Top="70" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="46" Canvas.Top="70" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="58" Canvas.Top="70" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="70" Canvas.Top="70" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="34" Canvas.Top="82" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="46" Canvas.Top="82" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="58" Canvas.Top="82" Width="1.2" Height="1.2" Fill="#267191AC"/>
+                    <Ellipse Canvas.Left="70" Canvas.Top="82" Width="1.2" Height="1.2" Fill="#267191AC"/>
+
+                    <Ellipse Canvas.Left="566" Canvas.Top="316" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="578" Canvas.Top="316" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="590" Canvas.Top="316" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="602" Canvas.Top="316" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="566" Canvas.Top="328" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="578" Canvas.Top="328" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="590" Canvas.Top="328" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="602" Canvas.Top="328" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="566" Canvas.Top="340" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="578" Canvas.Top="340" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="590" Canvas.Top="340" Width="1.2" Height="1.2" Fill="#247191AC"/>
+                    <Ellipse Canvas.Left="602" Canvas.Top="340" Width="1.2" Height="1.2" Fill="#247191AC"/>
+
+                    <Path Data="M51,116 L57,116 M54,113 L54,119" Stroke="#2D6690B0" StrokeThickness="0.65"/>
+                    <Path Data="M584,284 L590,284 M587,281 L587,287" Stroke="#2D6690B0" StrokeThickness="0.65"/>
+                </Canvas>
+
+                <!-- 开放式椭圆轨道：只保留左右弧段，光点运动而轨道本身不旋转。 -->
+                <Grid x:Name="OrbitArtwork" Width="640" Height="400"
+                      IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <ScaleTransform x:Name="OrbitScale" ScaleX="1" ScaleY="1"/>
+                    </Grid.RenderTransform>
+                    <Canvas x:Name="OrbitFrame" Width="640" Height="400">
+                        <Path Data="M219.22,328.85 A232,123 -11 0 1 179.41,124.06
+                                    M420.78,77.15 A232,123 -11 0 1 460.59,281.94"
+                              Stroke="#364980A9" StrokeThickness="0.8" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        <Path Data="M196.09,327.60 L193.17,330.54 M163.70,318.73 L160.01,321.46
+                                    M136.05,306.35 L131.72,308.79 M113.99,290.83 L109.14,292.90
+                                    M98.20,272.63 L92.97,274.28 M89.14,252.33 L83.70,253.49
+                                    M87.09,230.52 L81.60,231.17 M92.13,207.88 L86.75,207.99
+                                    M104.08,185.09 L98.99,184.66 M122.60,162.84 L117.95,161.89
+                                    M147.12,141.81 L143.04,140.37 M176.88,122.64 L173.51,120.75
+                                    M443.91,78.40 L446.83,75.46 M476.30,87.27 L479.99,84.54
+                                    M503.95,99.65 L508.28,97.21 M526.01,115.17 L530.86,113.10
+                                    M541.80,133.37 L547.03,131.72 M550.86,153.67 L556.30,152.51
+                                    M552.91,175.48 L558.40,174.83 M547.87,198.12 L553.25,198.01
+                                    M535.92,220.91 L541.01,221.34 M517.40,243.16 L522.05,244.11
+                                    M492.88,264.19 L496.96,265.63 M463.12,283.36 L466.49,285.25"
+                              Stroke="#234989B1" StrokeThickness="0.55" Fill="{x:Null}"/>
+                        <Path x:Name="BlueArc" Data="M451.70,82.83 A232,123 -11 0 1 513.91,242.45"
+                              Stroke="#BE2B9BEE" StrokeThickness="1.65" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        <Path x:Name="LightArc" Data="M185.06,322.35 A232,123 -11 0 1 95.96,259.65"
+                              Stroke="#605DBEE7" StrokeThickness="1.05" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        <Path x:Name="GoldArc" Data="M91.65,225.63 A232,123 -11 0 1 152.88,140.92"
+                              Stroke="#96C6A15B" StrokeThickness="1.2" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        <Path Data="M507.18,134.19 A207,103 -11 0 1 514.72,206.15"
+                              Stroke="#222B9BEE" StrokeThickness="0.7" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        <Path Data="M140.64,278.86 A207,103 -11 0 1 120.68,209.32"
+                              Stroke="#1E2B9BEE" StrokeThickness="0.7" Fill="{x:Null}"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+                        <Ellipse x:Name="BlueOrbitDot" Canvas.Left="-3" Canvas.Top="-3"
+                                 Width="6" Height="6" Fill="#2B9BEE" Stroke="#F4FCFF" StrokeThickness="1.1">
+                            <Ellipse.RenderTransform>
+                                <TranslateTransform x:Name="BlueDotTranslate" X="513.91" Y="242.45"/>
+                            </Ellipse.RenderTransform>
+                            <Ellipse.Effect>
+                                <DropShadowEffect Color="#2B9BEE" BlurRadius="10" ShadowDepth="0" Opacity="0.25"/>
+                            </Ellipse.Effect>
+                        </Ellipse>
+                        <Ellipse x:Name="GoldOrbitDot" Canvas.Left="-2" Canvas.Top="-2"
+                                 Width="4" Height="4" Fill="#D7C6A15B">
+                            <Ellipse.RenderTransform>
+                                <TranslateTransform x:Name="GoldDotTranslate" X="152.88" Y="140.92"/>
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                    </Canvas>
+                </Grid>
+
+                <!-- 两侧为主题装饰卡片，不响应鼠标，不增加启动操作。 -->
+                <Grid x:Name="LightCard" Width="64" Height="78"
+                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                      Margin="60.26,208.27,0,0" IsHitTestVisible="False"
+                      RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <TranslateTransform x:Name="LightCardEntrance"/>
+                            <TranslateTransform x:Name="LightCardFloat"/>
+                            <RotateTransform Angle="5"/>
+                        </TransformGroup>
+                    </Grid.RenderTransform>
+                    <Border Background="#EEFFFFFF" BorderBrush="#CDD0DCE7" BorderThickness="0.7"
+                            CornerRadius="9">
+                        <Border.Effect>
+                            <DropShadowEffect Color="#4F6980" BlurRadius="12" ShadowDepth="2"
+                                              Direction="90" Opacity="0.10"/>
+                        </Border.Effect>
+                        <Canvas Width="64" Height="78">
+                            <Border Canvas.Left="7" Canvas.Top="7" Width="50" Height="39"
+                                    CornerRadius="5" ClipToBounds="True">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#CFEFFC" Offset="0"/>
+                                        <GradientStop Color="#F6FAFC" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Canvas Width="50" Height="39">
+                                    <Ellipse Canvas.Left="33" Canvas.Top="7" Width="8" Height="8" Fill="#F0C570"/>
+                                    <Path Data="M0,34 L14,17 L28,34 Z" Fill="#88C7E2"/>
+                                    <Path Data="M12,34 L31,13 L50,34 Z" Fill="#53A6D3"/>
+                                    <Rectangle Canvas.Left="0" Canvas.Top="34" Width="50" Height="3" Fill="#DEEEF1"/>
+                                </Canvas>
+                            </Border>
+                            <Ellipse Canvas.Left="9" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#2B9BEE"/>
+                            <Ellipse Canvas.Left="17" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#6BC4E8"/>
+                            <Ellipse Canvas.Left="25" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#C6A15B"/>
+                            <Rectangle Canvas.Left="39" Canvas.Top="57" Width="16" Height="3"
+                                       RadiusX="1.5" RadiusY="1.5" Fill="#DCE4EB"/>
+                            <Rectangle Canvas.Left="8" Canvas.Top="67" Width="26" Height="2"
+                                       RadiusX="1" RadiusY="1" Fill="#E2E8EE"/>
                         </Canvas>
-                    </Viewbox>
+                    </Border>
                 </Grid>
 
-                <Ellipse x:Name="MarkGlow" Width="300" Height="300"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                         Opacity="0" IsHitTestVisible="False">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush>
-                            <GradientStop Color="#2E0EB0FC" Offset="0"/>
-                            <GradientStop Color="#000EB0FC" Offset="1"/>
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
-
-                <Grid x:Name="MarkRoot" Width="220" Height="220"
-                      HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Image x:Name="AppIcon" Source="Assets/app-icon.png"
-                           Width="220" Height="220" Stretch="Uniform"
-                           Opacity="0" RenderOptions.BitmapScalingMode="HighQuality"
-                           RenderTransformOrigin="0.5,0.5">
-                        <Image.RenderTransform>
-                            <ScaleTransform x:Name="IconScale" ScaleX="0.94" ScaleY="0.94"/>
-                        </Image.RenderTransform>
-                    </Image>
+                <Grid x:Name="DarkCard" Width="64" Height="78"
+                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                      Margin="515.74,119.73,0,0" IsHitTestVisible="False"
+                      RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <TranslateTransform x:Name="DarkCardEntrance"/>
+                            <TranslateTransform x:Name="DarkCardFloat"/>
+                            <RotateTransform Angle="-5"/>
+                        </TransformGroup>
+                    </Grid.RenderTransform>
+                    <Border Background="#EEFFFFFF" BorderBrush="#CDD0DCE7" BorderThickness="0.7"
+                            CornerRadius="9">
+                        <Border.Effect>
+                            <DropShadowEffect Color="#4F6980" BlurRadius="12" ShadowDepth="2"
+                                              Direction="90" Opacity="0.10"/>
+                        </Border.Effect>
+                        <Canvas Width="64" Height="78">
+                            <Border Canvas.Left="7" Canvas.Top="7" Width="50" Height="39"
+                                    CornerRadius="5" ClipToBounds="True">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#181F37" Offset="0"/>
+                                        <GradientStop Color="#3C4967" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Canvas Width="50" Height="39">
+                                    <Ellipse Canvas.Left="34" Canvas.Top="7" Width="7" Height="7" Fill="#EDCE8B"/>
+                                    <Path Data="M0,34 L16,18 L31,34 Z" Fill="#4F5E89"/>
+                                    <Path Data="M12,34 L32,13 L50,34 Z" Fill="#2E80AB"/>
+                                    <Rectangle Canvas.Left="0" Canvas.Top="34" Width="50" Height="3" Fill="#202B44"/>
+                                </Canvas>
+                            </Border>
+                            <Ellipse Canvas.Left="9" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#2B9BEE"/>
+                            <Ellipse Canvas.Left="17" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#C6A15B"/>
+                            <Ellipse Canvas.Left="25" Canvas.Top="56" Width="4.5" Height="4.5" Fill="#6E7B99"/>
+                            <Rectangle Canvas.Left="39" Canvas.Top="57" Width="16" Height="3"
+                                       RadiusX="1.5" RadiusY="1.5" Fill="#DCE4EB"/>
+                            <Rectangle Canvas.Left="8" Canvas.Top="67" Width="26" Height="2"
+                                       RadiusX="1" RadiusY="1" Fill="#E2E8EE"/>
+                        </Canvas>
+                    </Border>
                 </Grid>
 
-                <StackPanel x:Name="TextStack" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <StackPanel.RenderTransform>
-                        <TranslateTransform Y="175"/>
-                    </StackPanel.RenderTransform>
-                    <TextBlock x:Name="WordSub" Text="L O C A L   T H E M E   E N G I N E"
-                               Margin="0,8,0,0" HorizontalAlignment="Center"
-                               FontFamily="Cascadia Mono, Consolas" FontSize="10"
-                               TextOptions.TextFormattingMode="Display"
-                               Foreground="#4D535B" Opacity="0">
+                <TextBlock Text="L I G H T" Width="64" HorizontalAlignment="Left" VerticalAlignment="Top"
+                           Margin="60.26,295.27,0,0" TextAlignment="Center" IsHitTestVisible="False"
+                           FontFamily="Consolas" FontSize="7" Foreground="#8C677E91"
+                           TextOptions.TextFormattingMode="Display"/>
+                <TextBlock Text="D A R K" Width="64" HorizontalAlignment="Left" VerticalAlignment="Top"
+                           Margin="515.74,103.73,0,0" TextAlignment="Center" IsHitTestVisible="False"
+                           FontFamily="Consolas" FontSize="7" Foreground="#8C677E91"
+                           TextOptions.TextFormattingMode="Display"/>
+
+                <!-- 横向品牌组合：图标不再带白色底板，也不持续上下浮动。 -->
+                <StackPanel x:Name="BrandHeader" Orientation="Horizontal"
+                            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,110,0,0">
+                    <Grid x:Name="IconStage" Width="66" Height="66" IsHitTestVisible="False">
+                        <Ellipse x:Name="MarkGlow" Width="92" Height="92" Opacity="0.7"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#202B9BEE" Offset="0"/>
+                                    <GradientStop Color="#0C2B9BEE" Offset="0.55"/>
+                                    <GradientStop Color="#002B9BEE" Offset="1"/>
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Grid x:Name="MarkRoot" Width="66" Height="66" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="IconScale" ScaleX="1" ScaleY="1"/>
+                            </Grid.RenderTransform>
+                            <Image x:Name="AppIcon" Source="Assets/app-icon.png"
+                                   Width="66" Height="66" Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                        </Grid>
+                    </Grid>
+                    <TextBlock x:Name="BrandCopy" Text="BackdropBuddy"
+                               Margin="16,0,0,0" VerticalAlignment="Center"
+                               FontFamily="Segoe UI" FontSize="24" FontWeight="Normal"
+                               Foreground="#25282E" RenderTransformOrigin="0.5,0.5">
                         <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="WordSubShift" Y="4"/>
+                            <TranslateTransform x:Name="BrandCopyShift"/>
                         </TextBlock.RenderTransform>
                     </TextBlock>
-                    <StackPanel x:Name="StatusBlock" HorizontalAlignment="Center"
-                                Margin="0,16,0,0" Opacity="0">
-                        <StackPanel x:Name="StatusZh" Orientation="Horizontal" HorizontalAlignment="Center"/>
-                        <StackPanel x:Name="StatusEn" Orientation="Horizontal" HorizontalAlignment="Center"
-                                    Margin="0,7,0,0"/>
+                </StackPanel>
+
+                <Grid x:Name="StatusBlock" Width="360" Height="28"
+                      HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,211,0,0">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="StatusShift"/>
+                    </Grid.RenderTransform>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse x:Name="StatusDot" Width="4" Height="4" Margin="0,0,8,0"
+                                 VerticalAlignment="Center" Fill="#2B9BEE"/>
+                        <StackPanel x:Name="StatusZh" Orientation="Horizontal" VerticalAlignment="Center"/>
+                        <Rectangle Width="1" Height="8" Margin="11,0" Fill="#41738797"
+                                   VerticalAlignment="Center"/>
+                        <StackPanel x:Name="StatusEn" Orientation="Horizontal" VerticalAlignment="Center"/>
                     </StackPanel>
+                </Grid>
+
+                <Grid x:Name="Progress" Width="148" Height="2"
+                      HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,272,0,0">
+                    <Rectangle Height="2" RadiusX="1" RadiusY="1" Fill="#17243B4E"/>
+                    <Rectangle Height="2" RadiusX="1" RadiusY="1" RenderTransformOrigin="0,0.5">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#2B9BEE" Offset="0"/>
+                                <GradientStop Color="#59C7F2" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                        <Rectangle.RenderTransform>
+                            <ScaleTransform x:Name="ProgressScale" ScaleX="0.04"/>
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                </Grid>
+
+                <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                            Margin="28,0,0,22" IsHitTestVisible="False">
+                    <Rectangle Width="18" Height="1" HorizontalAlignment="Left" Fill="#872B9BEE"/>
+                    <TextBlock Text="L O C A L   T H E M E   E N G I N E" Margin="0,7,0,0"
+                               FontFamily="Consolas" FontSize="7.4" Foreground="#A572818F"
+                               TextOptions.TextFormattingMode="Display"/>
                 </StackPanel>
             </Grid>
 
-            <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="46,44,0,0">
-                <TextBlock Text="B A C K D R O P B U D D Y"
-                           FontFamily="Bahnschrift, Segoe UI" FontSize="16" FontWeight="Bold"
-                           Foreground="#1E2024"/>
-                <TextBlock Text="T H E M E   M A N A G E R"
-                           FontFamily="Cascadia Mono, Consolas" FontSize="9.5"
-                           TextOptions.TextFormattingMode="Display"
-                           Foreground="#4D535B" Margin="0,4,0,0"/>
-            </StackPanel>
-
             <Border x:Name="Skip" HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Margin="0,40,38,0" Padding="8,5" BorderBrush="Transparent"
-                    BorderThickness="1" Background="Transparent" Opacity="0.75" Cursor="Hand">
-                <TextBlock Text="跳过  SKIP ▸" FontFamily="Cascadia Mono, Consolas"
-                           FontSize="10" TextOptions.TextFormattingMode="Display"
-                           Foreground="#7A8088"/>
+                    Margin="0,26,30,0" Padding="10,6" BorderBrush="Transparent"
+                    BorderThickness="1" Background="Transparent" Opacity="0.66" Cursor="Hand">
+                <TextBlock Text="跳过  /  Esc" FontFamily="Segoe UI, Microsoft YaHei"
+                           FontSize="10.5" TextOptions.TextFormattingMode="Display"
+                           Foreground="#727A86"/>
             </Border>
-
-            <Grid x:Name="Progress" Width="240" Height="3"
-                  HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                  Margin="0,0,0,52" Opacity="0.85">
-                <Rectangle Height="2" VerticalAlignment="Center" Fill="#1E202418"/>
-                <Rectangle Height="2" VerticalAlignment="Center" Fill="#C6A15B"
-                           RenderTransformOrigin="0,0.5">
-                    <Rectangle.RenderTransform>
-                        <ScaleTransform x:Name="ProgressScale" ScaleX="0.04"/>
-                    </Rectangle.RenderTransform>
-                </Rectangle>
-            </Grid>
         </Grid>
 
         <Rectangle x:Name="LightOut" Fill="#F1F2F6" Opacity="0" IsHitTestVisible="False"/>

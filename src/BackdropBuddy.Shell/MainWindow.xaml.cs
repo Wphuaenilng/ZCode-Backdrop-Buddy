@@ -116,6 +116,7 @@ namespace BackdropBuddy.Shell
                 null);
 
             await WebView.EnsureCoreWebView2Async(environment);
+            if (_splash != null) _splash.NotifyPhase(SplashWindow.PhaseWebview);
 
             CoreWebView2 core = WebView.CoreWebView2;
             core.Settings.IsStatusBarEnabled = false;
@@ -172,8 +173,12 @@ namespace BackdropBuddy.Shell
             try
             {
                 _kernel.Start();
+                if (_splash != null) _splash.NotifyPhase(SplashWindow.PhaseKernel);
                 // 托盘动作用的是同一个内核会话，先握一次手，避免 UI 尚未就绪时被 HANDSHAKE_REQUIRED 挡住
-                _bridge.Request("system.hello", null, null);
+                _bridge.Request("system.hello", null, result =>
+                {
+                    if (IsOkResult(result) && _splash != null) _splash.NotifyPhase(SplashWindow.PhaseHello);
+                });
                 RefreshTrayState();
                 _schedule = new SchedulePump(_bridge);
                 _schedule.Start();
@@ -184,10 +189,22 @@ namespace BackdropBuddy.Shell
             }
         }
 
+        private static bool IsOkResult(Dictionary<string, object> result)
+        {
+            return result != null && result.TryGetValue("ok", out var ok) && true.Equals(ok);
+        }
+
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            string json = e.WebMessageAsJson;
+            // UI 首屏数据就绪的自定义信号（非协议帧），只发给启动窗，不进协议桥
+            if (!string.IsNullOrEmpty(json) && json.IndexOf("ui.ready", StringComparison.Ordinal) >= 0)
+            {
+                if (_splash != null) _splash.NotifyUiReady();
+                return;
+            }
             if (_bridge == null) return;
-            _bridge.FromUi(e.WebMessageAsJson);
+            _bridge.FromUi(json);
         }
 
         private void OnNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -195,7 +212,7 @@ namespace BackdropBuddy.Shell
             if (e.IsSuccess)
             {
                 Logs.Shell.Write("INFO", "ui navigation completed");
-                if (_splash != null) _splash.NotifyReady();
+                if (_splash != null) _splash.NotifyPhase(SplashWindow.PhaseNavigated);
                 return;
             }
 
