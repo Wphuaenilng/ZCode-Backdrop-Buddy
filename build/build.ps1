@@ -71,10 +71,18 @@ if (-not $SkipUi) {
 
     Push-Location $ui
     try {
+      # 先用后声明（TDZ）会让 React 首渲染整页崩溃，vite 构建不报，在这里拦
+      & $node '.\node_modules\eslint\bin\eslint.js' .
+      Assert-Exit $LASTEXITCODE 'eslint (no-use-before-define)'
+
       & $node '.\node_modules\vite\bin\vite.js' build
       Assert-Exit $LASTEXITCODE 'vite build'
       & $node '.\scripts\inject-csp.mjs'
       Assert-Exit $LASTEXITCODE 'csp injection'
+
+      # 产物级冒烟：真实发布文件在 jsdom 里必须挂载成功，拦一切运行时崩溃
+      & $node '.\scripts\smoke-test.mjs'
+      Assert-Exit $LASTEXITCODE 'ui smoke test (jsdom mount)'
     } finally { Pop-Location }
 
     $html = Get-Item -LiteralPath (Join-Path $ui 'dist\index.html')

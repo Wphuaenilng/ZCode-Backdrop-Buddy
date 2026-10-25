@@ -39,7 +39,7 @@ export default function SettingsView({ themes, themeId, params, native, minimize
     setForm(normalizeParams(params));
     setName(theme?.name || '');
     // Reset the form only when the edited theme changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // （不装 eslint-plugin-react-hooks，故无 disable 注释；有意只依赖 themeId）
   }, [themeId]);
 
   const patch = (value) => setForm((current) => ({ ...current, ...value }));
