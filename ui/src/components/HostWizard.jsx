@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STEPS = [
-  { id: 'connect', label: '连接', hint: '填目标程序的控制台地址' },
+  { id: 'connect', label: '连接', hint: '自动发现，或手动填写程序位置与调试端口' },
   { id: 'root', label: '根容器', hint: '点选铺满窗口的那层容器' },
   { id: 'faces', label: '面板', hint: '点选要变透明的区域' },
   { id: 'vars', label: '变量', hint: '挑背景与文字变量' },
@@ -75,6 +75,7 @@ export default function HostWizard({ bridge, native, onSaved }) {
   const [test, setTest] = useState(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanResults, setScanResults] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false);
   const [importing, setImporting] = useState('');
   const [picking, setPicking] = useState(null);
   const [busy, setBusy] = useState('');
@@ -117,6 +118,10 @@ export default function HostWizard({ bridge, native, onSaved }) {
 
   const inspect = useCallback(async () => {
     setError('');
+    if (/(?:^|[\\/])kimi\.exe$/i.test(exe.trim())) {
+      setError('Kimi 桌面版已禁用远程调试，暂时无法接入。');
+      return;
+    }
     setBusy('inspect');
     try {
       const data = await call('host.inspect', { port: Number(port) });
@@ -145,11 +150,15 @@ export default function HostWizard({ bridge, native, onSaved }) {
       if (ready && !rootSelector) setRootSelector(ready.selector);
       setStep(1);
     } catch (failure) {
-      setError(failure.message);
+      if (/连不上|fetch failed|ECONNREFUSED/i.test(failure.message)) {
+        setError(`连不上端口 ${port}。请带 --remote-debugging-port=${port} 重启目标程序后再试。`);
+      } else {
+        setError(failure.message);
+      }
     } finally {
       setBusy('');
     }
-  }, [call, port, rootSelector]);
+  }, [call, port, rootSelector, exe]);
 
   const startPick = useCallback(async (target) => {
     setError('');
@@ -221,6 +230,7 @@ export default function HostWizard({ bridge, native, onSaved }) {
           setPort(String(item.port || ''));
           setName(item.suggestion?.name || '');
           setHostId(item.suggestion?.id || '');
+          setManualOpen(true);
         }
         return;
       }
@@ -297,6 +307,7 @@ export default function HostWizard({ bridge, native, onSaved }) {
   }
 
   const vars = info?.vars || [];
+  const kimiSelected = /(?:^|[\\/])kimi\.exe$/i.test(exe.trim());
   const canNext = step === 1 ? !!rootSelector : step === 2 ? surfaces.length > 0 : step === 3 ? (noVars || (!!bgVar && !!fgVar)) : true;
 
   return (
@@ -305,83 +316,120 @@ export default function HostWizard({ bridge, native, onSaved }) {
         <div className="wizard-head">
           <div>
             <div className="section-title">接入新宿主</div>
-            <div className="wizard-sub">只读连接 → 点选锚点 → 试穿一次 → 保存为宿主配置。不写宿主文件。</div>
+            <div className="wizard-sub">通过只读连接完成配置，试穿验证后再保存，不修改宿主文件。</div>
           </div>
-          <div className="wizard-steps">
-            {STEPS.map((item, index) => (
-              <span key={item.id} className={`wstep${index === step ? ' active' : ''}${index < step ? ' done' : ''}`}>
-                {index + 1}. {item.label}
-              </span>
-            ))}
-          </div>
+          <span className="wizard-safe">安全接入 · 随时可恢复</span>
+        </div>
+
+        <div className="wizard-steps" aria-label="接入进度">
+          {STEPS.map((item, index) => (
+            <div key={item.id} className={`wstep${index === step ? ' active' : ''}${index < step || step === 5 ? ' done' : ''}`}>
+              <span className="wstep-number">{index < step || step === 5 ? '✓' : index + 1}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
 
         {error ? <div className="wizard-error" data-testid="wizard-error">{error}</div> : null}
 
-        {step === 0 ? (
-          <div className="wizard-body">
-            <div className="wfield">
-              <label>自动发现（推荐）</label>
-              <div className="wrow">
-                <button type="button" className="btn gold" disabled={scanBusy} onClick={runScan} data-testid="wizard-autoscan">
-                  {scanBusy ? '正在扫描…' : '自动查找宿主'}
-                </button>
-                <span className="scan-hint">先带 <code>--remote-debugging-port=9222</code> 启动目标程序，扫到后一键接入（自动试穿验证）。</span>
-              </div>
-              {scanResults ? (
-                scanResults.length ? (
-                  <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
-                    {scanResults.map((item) => (
-                      <div className="scan-card" key={`${item.port}-${item.suggestion?.id || item.hostId}`}>
-                        <div>
-                          <div className="scan-title">{item.imported ? (item.hostName || '已接入') : (item.suggestion?.name || item.title)}</div>
-                          <div className="scan-meta">
-                            端口 {item.port} · {item.imported ? '已接入，可直接在控制台顶部切换' : `${item.vars || 0} 个变量${item.suggestion?.mediaDelivery === 'blob' ? ' · blob 媒体' : ''}`}
-                            {!item.imported && !item.suggestion?.exe ? ' · 未定位到程序路径' : ''}
-                          </div>
-                        </div>
-                        {item.imported ? (
-                          <span className="wchip on">已接入</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn dark"
-                            disabled={importing === (item.suggestion?.id || '')}
-                            onClick={() => autoImport(item)}
-                            data-testid={`wizard-import-${item.suggestion?.id}`}
-                          >
-                            {importing === (item.suggestion?.id || '') ? '试穿中…' : '一键接入'}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="note" style={{ marginTop: 8 }}>没扫到可接入的程序：确认目标程序带调试端口在运行，或用下面的手动步骤。</p>
-                )
-              ) : null}
-            </div>
-            <div className="wfield">
-              <label>手动接入（高级）</label>
-              <div className="wrow">
-                <input value={exe} onChange={(event) => setExe(event.target.value)} placeholder="C:\Program Files\YourApp\YourApp.exe" data-testid="wizard-exe" />
-                <button type="button" className="btn dark" onClick={browse}>选择…</button>
-              </div>
-            </div>
-            <div className="wfield">
-              <label>调试端口</label>
-              <div className="wrow">
-                <input value={port} onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" data-testid="wizard-port" />
-                <button type="button" className="btn gold" disabled={busy === 'inspect'} onClick={inspect} data-testid="wizard-inspect">
-                  {busy === 'inspect' ? '连接中…' : '只读检测'}
-                </button>
-              </div>
-              <div className="whint">
-                手动模式：先用 <code>--remote-debugging-port={port || '9222'}</code> 启动目标程序，再点检测。检测只读，不注入。
-              </div>
-            </div>
+        <div className="wizard-content">
+          <div className="wizard-step-intro">
+            <span className="wizard-step-kicker">{step === 5 ? '接入完成' : `步骤 ${step + 1} / ${STEPS.length}`}</span>
+            <h2>{step === 5 ? '宿主已可以使用' : STEPS[step].label}</h2>
+            <p>{step === 5 ? '配置已保存，可以回到控制台切换宿主并应用主题。' : STEPS[step].hint}</p>
           </div>
-        ) : null}
+
+          {step === 0 ? (
+            <div className="wizard-body connect-body">
+              <section className="discover-panel">
+                <div className="discover-heading">
+                  <div>
+                    <span className="recommend-badge">推荐</span>
+                    <h3>自动查找可接入的程序</h3>
+                    <p>扫描本机调试端口，识别后自动完成变量映射与试穿验证。</p>
+                  </div>
+                  <button type="button" className="btn gold" disabled={scanBusy} onClick={runScan} data-testid="wizard-autoscan">
+                    {scanBusy ? '正在扫描…' : '自动查找宿主'}
+                  </button>
+                </div>
+                <div className="launch-hint">
+                  <span>启动参数</span>
+                  <code>--remote-debugging-port=9222</code>
+                  <span>先带此参数启动目标程序，再回到这里扫描。</span>
+                </div>
+                {scanResults ? (
+                  scanResults.length ? (
+                    <div className="scan-results">
+                      {scanResults.map((item) => (
+                        <div className="scan-card" key={`${item.port}-${item.suggestion?.id || item.hostId}`}>
+                          <div>
+                            <div className="scan-title">{item.imported ? (item.hostName || '已接入') : (item.suggestion?.name || item.title)}</div>
+                            <div className="scan-meta">
+                              端口 {item.port} · {item.imported ? '已接入，可直接在控制台顶部切换' : `${item.vars || 0} 个变量${item.suggestion?.mediaDelivery === 'blob' ? ' · blob 媒体' : ''}`}
+                              {!item.imported && !item.suggestion?.exe ? ' · 未定位到程序路径' : ''}
+                            </div>
+                          </div>
+                          {item.imported ? (
+                            <span className="wchip on">已接入</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn dark"
+                              disabled={importing === (item.suggestion?.id || '')}
+                              onClick={() => autoImport(item)}
+                              data-testid={`wizard-import-${item.suggestion?.id}`}
+                            >
+                              {importing === (item.suggestion?.id || '') ? '试穿中…' : '一键接入'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="scan-empty">
+                      未发现已开启 CDP 调试的宿主。请带调试端口重启程序；Kimi 暂不支持。
+                    </div>
+                  )
+                ) : null}
+              </section>
+
+              <section className={`manual-panel${manualOpen ? ' open' : ''}`}>
+                <button type="button" className="manual-toggle" aria-expanded={manualOpen} onClick={() => setManualOpen((open) => !open)}>
+                  <span>
+                    <strong>手动接入</strong>
+                    <small>自动发现不可用时，手动填写程序位置和调试端口</small>
+                  </span>
+                  <span className="manual-toggle-meta">高级 {manualOpen ? '−' : '+'}</span>
+                </button>
+                {manualOpen ? (
+                  <div className="manual-fields">
+                    <div className="wfield">
+                      <label>目标程序位置（可选）</label>
+                      <div className="wrow">
+                        <input value={exe} onChange={(event) => setExe(event.target.value)} placeholder="C:\Program Files\YourApp\YourApp.exe" data-testid="wizard-exe" />
+                        <button type="button" className="btn dark" onClick={browse}>选择…</button>
+                      </div>
+                    </div>
+                    <div className="wfield">
+                      <label>调试端口</label>
+                      <div className="wrow">
+                        <input value={port} onChange={(event) => setPort(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" data-testid="wizard-port" />
+                        <button type="button" className="btn gold" disabled={kimiSelected || busy === 'inspect'} onClick={inspect} data-testid="wizard-inspect">
+                          {kimiSelected ? '暂不支持' : busy === 'inspect' ? '连接中…' : '只读检测'}
+                        </button>
+                      </div>
+                      <div className="whint">检测只读取页面信息，不会向宿主注入内容。</div>
+                    </div>
+                    {kimiSelected ? (
+                      <div className="wresult bad manual-support">
+                        Kimi 已禁用远程调试，并非端口错误。请选择其他支持 CDP 的程序。
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          ) : null}
 
         {step === 1 ? (
           <div className="wizard-body">
@@ -624,29 +672,40 @@ export default function HostWizard({ bridge, native, onSaved }) {
           </div>
         ) : null}
 
-        <div className="wizard-foot">
-          <button type="button" className="btn dark" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>上一步</button>
-          {step > 0 && step < 4 ? (
-            <button type="button" className="btn gold" disabled={!canNext} onClick={() => setStep((s) => Math.min(4, s + 1))} data-testid="wizard-next">
-              下一步
-            </button>
-          ) : null}
-          {step === 0 ? <span className="whint">{STEPS[step].hint}</span> : null}
         </div>
 
-        {hosts.length ? (
-          <div className="wizard-hosts">
-            <div className="wlabel">当前可用宿主</div>
-            <div className="wchips">
-              {hosts.map((host) => (
-                <span key={host.id} className={`wchip${host.source === 'user' ? ' on' : ''}`}>
-                  {host.name}{host.port ? ` · ${host.port}` : ''}{host.source === 'user' ? ' · 自建' : ''}
-                </span>
-              ))}
+        {step < 5 ? (
+          <div className="wizard-foot">
+            <span className="whint">
+              {step === 0 ? '自动发现可一步完成接入；手动模式将依次完成以下五步。' : `当前：${STEPS[step].label} · 后续步骤可随时返回修改`}
+            </span>
+            <div className="wizard-actions">
+              {step > 0 ? (
+                <button type="button" className="btn light" onClick={() => setStep((s) => Math.max(0, s - 1))}>上一步</button>
+              ) : null}
+              {step > 0 && step < 4 ? (
+                <button type="button" className="btn gold" disabled={!canNext} onClick={() => setStep((s) => Math.min(4, s + 1))} data-testid="wizard-next">
+                  下一步
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
       </div>
+
+      {hosts.length ? (
+        <aside className="wizard-hosts" aria-label="当前可用宿主">
+          <div className="wlabel">已接入宿主 <span>{hosts.length}</span></div>
+          <div className="wchips">
+            {hosts.map((host) => (
+              <span key={host.id} className={`wchip${host.source === 'user' ? ' on' : ''}`}>
+                {host.name}{host.port ? ` · ${host.port}` : ''}{host.source === 'user' ? ' · 自建' : ''}
+              </span>
+            ))}
+          </div>
+          <span className="wizard-hosts-hint">在控制台顶部切换</span>
+        </aside>
+      ) : null}
     </section>
   );
 }

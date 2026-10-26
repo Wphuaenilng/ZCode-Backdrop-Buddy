@@ -113,7 +113,7 @@ function pickAppExe(paths) {
   return paths[0] || null;
 }
 
-async function probePort(port, timeoutMs = 600) {
+async function probePort(port, timeoutMs = 1200) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

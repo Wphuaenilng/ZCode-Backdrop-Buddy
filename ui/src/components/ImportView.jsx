@@ -62,7 +62,8 @@ export default function ImportView({ draft, native, onDraft, onParams, onToggleT
         </div>
 
         <aside className="settings-card" id="importPanel">
-          <div className="field">
+          <div className="form-scroll">
+            <div className="field">
             <label htmlFor="importName">主题名称</label>
             <input
               id="importName"
@@ -189,6 +190,7 @@ export default function ImportView({ draft, native, onDraft, onParams, onToggleT
             />
             启用自定义取景
           </label>
+          </div>
 
           <div className="save-row">
             <button type="button" className="btn gold full" onClick={onSave} data-testid="save-theme">保存为主题</button>
