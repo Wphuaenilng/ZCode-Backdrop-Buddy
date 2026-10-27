@@ -102,9 +102,12 @@ export default function App() {
   const [recoveryDismissed, setRecoveryDismissed] = useState(null);
   const [shellSettings, setShellSettings] = useState({ minimizeToTray: false });
   const [prefs, setPrefs] = useState({ applyOnStart: false, reducedMotion: false, zcodePath: null });
+  const [startupAnim, setStartupAnim] = useState(null);
   const [schedule, setSchedule] = useState({ rules: [], nextTriggerAt: null, wakeAt: null });
   const [applyBusy, setApplyBusy] = useState(false);
   const [restartPrompt, setRestartPrompt] = useState(null);
+  const [hostStartupConfirm, setHostStartupConfirm] = useState(false);
+  const [hostStartupBusy, setHostStartupBusy] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const toastTimer = useRef(0);
@@ -148,6 +151,7 @@ export default function App() {
           ? { ...theme.params, ...visual.params }
           : (theme.params || {}),
         media: theme.media || null,
+        startup: theme.startup || { enabled: false, preset: 'zcode-pop', holdMs: 900, media: null },
         at: theme.updatedAt || theme.createdAt || 0
       };
     });
@@ -255,6 +259,10 @@ export default function App() {
         const scheduled = await bridge.request('schedule.list');
         if (!alive) return;
         if (scheduled.ok) setScheduleFrom(scheduled.data);
+
+        const startup = await bridge.request('startup.get');
+        if (!alive) return;
+        if (startup.ok) setStartupAnim(startup.data?.settings || null);
       }
 
       // 首屏可交互（主题列表与偏好已就绪）：通知壳收掉启动窗；宿主探测等在后台继续补。
@@ -455,6 +463,39 @@ export default function App() {
     return true;
   }, [native, bridge, showToast]);
 
+  const setStartupEnabled = useCallback(async (value) => {
+    if (!native) { showToast('浏览器预览里不能改启动动画'); return; }
+
+    const previous = startupAnim;
+    setStartupAnim((current) => (current ? { ...current, enabled: value } : current));
+    const result = await bridge.request('startup.update', { enabled: value });
+    if (!result.ok) {
+      setStartupAnim(previous);
+      showToast('启动动画设置保存失败：' + (result.error?.message || result.error?.code || '未知错误'));
+      return;
+    }
+    setStartupAnim(result.data?.settings || previous);
+    showToast(value ? '已开启：下次启动播放开场动画' : '已关闭：下次启动使用内置品牌动画');
+  }, [native, bridge, showToast, startupAnim]);
+
+  const setStartupTheme = useCallback(async (themeId) => {
+    if (!native) { showToast('浏览器预览里不能改启动动画'); return; }
+
+    const previous = startupAnim;
+    setStartupAnim((current) => (current ? { ...current, themeId } : current));
+    const result = await bridge.request('startup.update', { themeId });
+    if (!result.ok) {
+      setStartupAnim(previous);
+      showToast('启动动画设置保存失败：' + (result.error?.message || result.error?.code || '未知错误'));
+      return;
+    }
+    const settings = result.data?.settings || previous;
+    setStartupAnim(settings);
+    showToast(themeId
+      ? '已设为启动动画：' + (settings?.themeName || '所选视频主题')
+      : '已恢复默认启动动画');
+  }, [native, bridge, showToast, startupAnim]);
+
   const saveRule = useCallback(async (rule) => {
     if (!native) { showToast('浏览器预览里不能改调度规则'); return false; }
 
@@ -547,6 +588,29 @@ export default function App() {
       setRestartPrompt(null);
     }
   }, [restartPrompt, applyBusy, findTheme, selectedTheme, callKernel, showToast, applyHostInfo, performApply, activeHostName]);
+
+  const confirmHostStartup = useCallback(async () => {
+    if (hostStartupBusy || !native) return;
+    setHostStartupBusy(true);
+    showToast(`正在启动 ${activeHostName}…`);
+    try {
+      const result = await callKernel('host.restart', { reapply: true }, 60000);
+      if (!result.ok) {
+        showToast(`${activeHostName} 启动失败：` + (result.error?.message || result.error?.code || '未知错误'));
+        return;
+      }
+      if (result.data?.status) applyHostInfo(result.data.status);
+      const injection = result.data?.startupInjection;
+      const animation = result.data?.startupAnimation;
+      if (injection?.injected) showToast(`${activeHostName} 已启动，启动动画已就绪`);
+      else if (injection && injection.reason !== 'already-open') showToast(`${activeHostName} 已启动；启动动画已回退，皮肤不受影响`);
+      else if (animation?.started) showToast(`${activeHostName} 已启动，正在播放兼容启动动画`);
+      else showToast(`${activeHostName} 已启动`);
+    } finally {
+      setHostStartupBusy(false);
+      setHostStartupConfirm(false);
+    }
+  }, [hostStartupBusy, native, activeHostName, callKernel, showToast, applyHostInfo]);
 
   const persistOverrides = useCallback((overrides) => {
     if (!native) return;
@@ -690,7 +754,7 @@ export default function App() {
   const saveSettings = useCallback(async (form) => {
     if (!settingsTheme) return;
 
-    const { name: nextName, ...params } = form;
+    const { name: nextName, startup, ...params } = form;
     const resolvedName = settingsTheme.builtin
       ? settingsTheme.name
       : String(nextName || settingsTheme.name).slice(0, 24);
@@ -700,7 +764,13 @@ export default function App() {
         id: settingsTheme.id,
         name: resolvedName,
         tags: settingsTheme.tags,
-        params
+        params,
+        startup: {
+          enabled: startup?.enabled === true,
+          preset: startup?.preset || 'zcode-pop',
+          holdMs: startup?.holdMs || 900,
+          media: startup?.media || null
+        }
       });
       if (!saved.ok) {
         showToast('保存失败：' + (saved.error?.message || saved.error?.code || '未知错误'));
@@ -1185,10 +1255,13 @@ export default function App() {
             themeId={settingsTheme.id}
             params={settingsParams}
             native={native}
+            bridge={bridge}
             minimizeToTray={shellSettings.minimizeToTray}
             onMinimizeToTray={setMinimizeToTray}
             prefs={prefs}
             onPreference={setPreference}
+            onHostStartup={() => setHostStartupConfirm(true)}
+            activeHostName={activeHostName}
             onSaveHostPath={saveZcodePath}
             schedule={schedule}
             onSaveRule={saveRule}
@@ -1213,6 +1286,18 @@ export default function App() {
           busy={applyBusy}
           onConfirm={confirmRestartApply}
           onCancel={() => { if (!applyBusy) setRestartPrompt(null); }}
+        />
+      ) : null}
+
+      {hostStartupConfirm ? (
+        <ConfirmDialog
+          testId="host-startup-confirm"
+          title={`启动 / 重启 ${activeHostName}`}
+          message={`将关闭当前 ${activeHostName} 窗口并通过 BackdropBuddy 重新启动，恢复正在使用的皮肤${selectedTheme?.startup?.enabled ? `，并显示「${selectedTheme.name}」的启动动画` : ''}。请保存宿主中未完成的内容；不会修改宿主安装文件。`}
+          confirmLabel="确认启动 / 重启"
+          busy={hostStartupBusy}
+          onConfirm={confirmHostStartup}
+          onCancel={() => { if (!hostStartupBusy) setHostStartupConfirm(false); }}
         />
       ) : null}
 

@@ -15,6 +15,7 @@ export function resolvePaths({ dataRoot, appRoot }) {
     backup: path.join(root, 'backup'),
     logs: path.join(root, 'logs'),
     config: path.join(root, 'config.json'),
+    startupAnimation: path.join(root, 'startup-animation.json'),
     pointer: path.join(themes, 'pointer.json'),
     runtime: path.join(themes, 'runtime.json'),
     hosts: path.join(root, 'hosts'),

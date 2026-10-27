@@ -1,4 +1,4 @@
-import { EMPTY, params, source, tags, themeId, themeName, mediaFile, filePath } from './common.mjs';
+import { EMPTY, params, source, startup, tags, themeId, themeName, mediaFile, filePath } from './common.mjs';
 
 export const themeList = {
   type: 'object',
@@ -24,7 +24,8 @@ export const themeSave = {
     name: themeName,
     tags: { ...tags, default: [] },
     params: { ...params, default: {} },
-    media: mediaFile
+    media: mediaFile,
+    startup
   }
 };
 

@@ -7,6 +7,9 @@ import { runPowerShellJson } from '../platform/exec.mjs';
 import { openCdp } from './detect.mjs';
 import { hashFile } from '../media/hashing.mjs';
 import { ZCODE_PROFILE } from './zcode.mjs';
+import { readJson } from '../store/json-file.mjs';
+import { playHostStartupAnimation } from './startup-animation.mjs';
+import { normalizeStartupTemplate, STARTUP_LIMITS } from './startup-template.mjs';
 
 function stamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -114,6 +117,52 @@ function fail(code, message, { retryable = false, details = null } = {}) {
   return new AppError(code, message, { retryable, details });
 }
 
+function startupMediaUrl(theme, paths) {
+  const name = theme.startup && theme.startup.media;
+  if (!name || typeof name !== 'string') return null;
+  const root = theme.source === 'builtin' ? paths.builtin : paths.user;
+  const dir = path.resolve(root, theme.id);
+  const file = path.resolve(dir, name);
+  const relative = path.relative(dir, file);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('startup media escapes the theme directory');
+  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(path.extname(file).toLowerCase())) {
+    throw new Error('startup media must be a local JPEG, PNG or WebP image');
+  }
+  const stat = fs.statSync(file);
+  if (!stat.isFile() || stat.size > STARTUP_LIMITS.maxMediaBytes) throw new Error('startup media exceeds 500KB');
+  return pathToFileURL(file).href;
+}
+
+function prepareStartupRequest({ theme, profile, paths, preferences, logger }) {
+  if (profile.id !== 'zcode' || !theme || !theme.startup || theme.startup.enabled !== true) return null;
+  let mediaUrl = null;
+  try { mediaUrl = startupMediaUrl(theme, paths); } catch (error) {
+    logger?.warn('startup media skipped', { themeId: theme.id, message: error.message });
+  }
+  const launchId = crypto.randomUUID();
+  const template = normalizeStartupTemplate({
+    ...theme.startup,
+    launchId,
+    themeName: theme.name,
+    accent: theme.params && theme.params.accent,
+    mediaUrl,
+    reducedMotion: !!preferences.reducedMotion
+  });
+  const dir = path.join(paths.cache, 'startup-injector', launchId);
+  const configPath = path.join(dir, 'config.json');
+  const resultPath = path.join(dir, 'result.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify({
+    schema: 'backdropbuddy.startup-injector/1',
+    port: profile.port,
+    resultPath,
+    waitPortMs: 45000,
+    settleMs: 4000,
+    template
+  }, null, 2), 'utf8');
+  return { dir, configPath, resultPath, template };
+}
+
 export function createHostAdapter({
   detector,
   logger,
@@ -122,7 +171,10 @@ export function createHostAdapter({
   profile = ZCODE_PROFILE,
   runtime = null,
   getPreferences = () => ({}),
-  session: openSession = openCdp
+  getStartupTheme = () => null,
+  session: openSession = openCdp,
+  playStartupAnimation = playHostStartupAnimation,
+  restartHost = null
 }) {
   const {
     buildThemeCss,
@@ -284,19 +336,59 @@ export function createHostAdapter({
 
   async function restart({ reapply = true } = {}) {
     let result;
+    let startupRequest = null;
+    let startupInjection = null;
+    try {
+      const theme = getStartupTheme() || (state && state.theme);
+      startupRequest = prepareStartupRequest({
+        theme,
+        profile,
+        paths,
+        preferences: getPreferences(),
+        logger
+      });
+    } catch (error) {
+      // 配置或素材问题只跳过可选动画，不能阻止宿主启动。
+      logger?.warn('startup injector preparation skipped', { message: error.message });
+    }
+
+    const startupSettings = readJson(paths?.startupAnimation, null);
+    const startupVideo = startupSettings?.schemaVersion === 1 && startupSettings.enabled !== false
+      && typeof startupSettings.videoPath === 'string' && startupSettings.videoPath
+      && fs.existsSync(startupSettings.videoPath) ? startupSettings.videoPath : null;
     try {
       const args = ['-ExePath', profile.exe || '', '-Port', String(profile.port)];
       if (profile.appxPackage) args.push('-AppxPackage', profile.appxPackage, '-ExeName', profile.appxExe || 'ChatGPT.exe');
-      result = await runPowerShellJson('host/restart.ps1', {
-        appRoot,
-        args,
-        timeout: 50000
-      });
+      if (startupRequest) args.push('-StartupConfig', startupRequest.configPath, '-StartupResult', startupRequest.resultPath);
+      result = restartHost
+        ? await restartHost({ profile, appRoot, args, startup: startupRequest ? { template: startupRequest.template } : null })
+        : await runPowerShellJson('host/restart.ps1', {
+          appRoot,
+          args,
+          timeout: 50000
+        });
+      startupInjection = result.startupInject || (startupRequest ? readJson(startupRequest.resultPath, null) : null);
+      if (startupRequest && result.alreadyOpen === true && !startupInjection) {
+        startupInjection = { attached: false, injected: false, elapsedMs: 0, reason: 'already-open' };
+      }
     } catch (error) {
       logger?.warn('host restart failed', { message: error.message, code: error.code });
       throw fail('HOST_RESTART_FAILED', `重启 ${profile.name} 失败：${error.message}`, {
         retryable: true,
         details: { code: error.code || null, ...(error.details ? { cause: error.details } : {}) }
+      });
+    } finally {
+      if (startupRequest) {
+        try { fs.rmSync(startupRequest.dir, { recursive: true, force: true }); } catch { /* temp cleanup is best effort */ }
+      }
+    }
+
+    if (startupInjection) {
+      logger?.info('startup.inject', {
+        attached: !!startupInjection.attached,
+        injected: !!startupInjection.injected,
+        elapsedMs: Number(startupInjection.elapsedMs) || 0,
+        reason: startupInjection.reason || null
       });
     }
 
@@ -321,6 +413,24 @@ export function createHostAdapter({
       ready: !!(status && status.ready)
     });
 
+    let startupAnimation = null;
+    if (startupVideo && startupInjection?.injected !== true && result.ok && result.alreadyOpen !== true && status && status.safeToInject === true) {
+      try {
+        const verified = await requireStatus({ force: true });
+        startupAnimation = await playStartupAnimation({
+          status: verified,
+          videoPath: startupVideo,
+          openSession,
+          logger
+        });
+        logger?.info('host startup animation handed off', { host: profile.id, phase: startupAnimation.phase });
+      } catch (error) {
+        // 启动动画是可选展示，绝不能把成功的宿主启动/皮肤恢复变成失败。
+        logger?.warn('host startup animation skipped', { host: profile.id, message: error.message });
+        startupAnimation = { started: false, reason: error.message };
+      }
+    }
+
     let reapplied = null;
     if (reapply && state && state.theme && status && status.ready) {
       const wasPaused = !!state.paused;
@@ -335,7 +445,7 @@ export function createHostAdapter({
       }
     }
 
-    return { restart: result, status: lastStatus, reapplied };
+    return { restart: result, status: lastStatus, reapplied, startupAnimation, startupInjection };
   }
 
   function resolveMedia(theme) {

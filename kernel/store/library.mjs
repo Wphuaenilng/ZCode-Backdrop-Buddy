@@ -16,7 +16,8 @@ import {
 } from './atomic.mjs';
 import { readJson, writeJsonAtomic } from './json-file.mjs';
 import { loadTheme, loadThemes } from './loader.mjs';
-import { createRecord, newThemeId, isValidThemeId, RECORD_SCHEMA } from './record.mjs';
+import { createRecord, newThemeId, isValidThemeId, normalizeStartup, RECORD_SCHEMA } from './record.mjs';
+import { createStartupPreviewHtml, normalizeStartupTemplate, STARTUP_LIMITS } from '../host/startup-template.mjs';
 import { seedBuiltins } from './seed.mjs';
 import { BUILTIN_CATALOG, LOCAL_ASSET_THEMES } from './catalog.mjs';
 import { storeStats } from './stats.mjs';
@@ -48,6 +49,59 @@ function mediaName(value) {
   return name;
 }
 
+function startupMediaName(value) {
+  const name = mediaName(value);
+  if (name.length > 255 || /[<>:"|?*\u0000-\u001f]/.test(name)
+    || !['.jpg', '.jpeg', '.png', '.webp'].includes(path.extname(name).toLowerCase())) {
+    throw new AppError('MEDIA_INVALID', `startup media must be a safe JPEG, PNG or WebP file name: ${name}`);
+  }
+  return name;
+}
+
+function startupImagePath(dir, value) {
+  const name = startupMediaName(value);
+  const root = path.resolve(dir);
+  const file = path.resolve(root, name);
+  const relative = path.relative(root, file);
+  if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(file)) {
+    throw new AppError('MEDIA_INVALID', `startup media is missing or outside the theme: ${name}`);
+  }
+  const realRoot = fs.realpathSync(root);
+  const realFile = fs.realpathSync(file);
+  const realRelative = path.relative(realRoot, realFile);
+  if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
+    throw new AppError('MEDIA_INVALID', `startup media resolves outside the theme: ${name}`);
+  }
+  const stat = fs.statSync(realFile);
+  if (!stat.isFile()) throw new AppError('MEDIA_INVALID', `startup media is not a file: ${name}`);
+  if (stat.size > STARTUP_LIMITS.maxMediaBytes) {
+    throw new AppError('MEDIA_TOO_LARGE', `startup media exceeds ${STARTUP_LIMITS.maxMediaBytes} bytes: ${name}`);
+  }
+  const header = Buffer.alloc(12);
+  const fd = fs.openSync(realFile, 'r');
+  try { fs.readSync(fd, header, 0, header.length, 0); } finally { fs.closeSync(fd); }
+  const extension = path.extname(name).toLowerCase();
+  const valid = extension === '.png'
+    ? header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    : extension === '.webp'
+      ? header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP'
+      : header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  if (!valid) throw new AppError('MEDIA_INVALID', `startup media content does not match its image extension: ${name}`);
+  return name;
+}
+
+function resolveStartup(record, dir) {
+  const startup = normalizeStartup(record.startup);
+  if (startup.media) return { ...startup, media: startupImagePath(dir, startup.media) };
+  if (!startup.enabled) return startup;
+  const candidates = [record.media?.thumb, record.media?.kind === 'image' ? record.media.file : null];
+  for (const name of candidates) {
+    if (!name) continue;
+    try { return { ...startup, media: startupImagePath(dir, name) }; } catch { /* try the next safe theme still */ }
+  }
+  return startup;
+}
+
 function packManifest(record) {
   return {
     schema: PACK_SCHEMA,
@@ -67,7 +121,18 @@ function publicRecord(record) {
       }
     : null;
 
-  return { ...record, media };
+  const startup = normalizeStartup(record.startup);
+  if (startup.media) {
+    try { startupMediaName(startup.media); } catch { startup.media = null; }
+  }
+  return {
+    ...record,
+    media,
+    startup: {
+      ...startup,
+      mediaUrl: startup.media ? mediaUrl(record.source, record.id, startup.media) : null
+    }
+  };
 }
 
 export function createLibrary({ paths, logger, media, locks }) {
@@ -178,12 +243,24 @@ export function createLibrary({ paths, logger, media, locks }) {
           };
         }
 
+        const startup = normalizeStartup(themeData.startup);
+        if (startup.media) {
+          const originalName = startupMediaName(startup.media);
+          const bytes = files.get(originalName) || files.get(`media/${originalName}`);
+          if (!bytes) throw new AppError('MEDIA_INVALID', `theme pack is missing startup media: ${originalName}`);
+          if (bytes.length > STARTUP_LIMITS.maxMediaBytes) throw new AppError('MEDIA_TOO_LARGE', 'startup media exceeds 500 KiB');
+          startup.media = 'startup' + path.extname(originalName).toLowerCase();
+          await fs.promises.writeFile(path.join(tx.dir, startup.media), bytes);
+          startupImagePath(tx.dir, startup.media);
+        }
+
         const record = createRecord({
           id,
           name: input.name || themeData.name,
           tags: input.tags && input.tags.length ? input.tags : themeData.tags,
           params: input.params && Object.keys(input.params).length ? input.params : themeData.params,
           media: mediaRecord,
+          startup: resolveStartup({ startup, media: mediaRecord }, tx.dir),
           source: 'user',
           createdAt: Date.now(),
           updatedAt: Date.now()
@@ -192,7 +269,7 @@ export function createLibrary({ paths, logger, media, locks }) {
         writeTheme(tx.dir, record);
         tx.commit(path.join(paths.user, id));
         invalidateStats();
-        logger?.info('theme pack imported', { packPath, themeId: id, media: !!mediaRecord });
+        logger?.info('theme pack imported', { packPath, themeId: id, media: !!mediaRecord, startup: startup.enabled });
         return publicRecord(record);
       } catch (error) {
         tx.abort();
@@ -234,6 +311,7 @@ export function createLibrary({ paths, logger, media, locks }) {
           tags: input.tags && input.tags.length ? input.tags : themeData.tags,
           params: input.params && Object.keys(input.params).length ? input.params : themeData.params,
           media: mediaRecord,
+          startup: resolveStartup({ startup: themeData.startup, media: mediaRecord }, tx.dir),
           source: 'user',
           createdAt: Date.now(),
           updatedAt: Date.now()
@@ -262,13 +340,19 @@ export function createLibrary({ paths, logger, media, locks }) {
       throw new AppError('MEDIA_INVALID', `theme thumbnail is missing: ${record.media.thumb}`);
     }
 
-    const exported = { ...record, source: 'user' };
+    const exported = { ...record, startup: resolveStartup(record, dir), source: 'user' };
     const entries = [
       { name: 'pack.json', data: Buffer.from(JSON.stringify(packManifest(record), null, 2), 'utf8') },
       { name: 'theme.json', data: Buffer.from(JSON.stringify(exported, null, 2), 'utf8') }
     ];
+    if (exported.startup.media && !entries.some((entry) => entry.name === exported.startup.media)) {
+      entries.push({
+        name: safeZipName(exported.startup.media),
+        data: await fs.promises.readFile(path.join(dir, exported.startup.media))
+      });
+    }
 
-    if (record.media && record.media.file) {
+    if (record.media && record.media.file && !entries.some((entry) => entry.name === record.media.file)) {
       const name = safeZipName(record.media.file);
       entries.push({ name, data: await fs.promises.readFile(path.join(dir, record.media.file)) });
     }
@@ -371,6 +455,10 @@ export function createLibrary({ paths, logger, media, locks }) {
           tags: input.tags ?? existing.tags,
           params: input.params ?? existing.params,
           media: existing.media,
+          startup: resolveStartup({
+            ...existing,
+            startup: { ...existing.startup, ...(input.startup || {}) }
+          }, path.join(paths.user, existing.id)),
           source: 'user',
           createdAt: existing.createdAt,
           updatedAt: Date.now()
@@ -390,6 +478,7 @@ export function createLibrary({ paths, logger, media, locks }) {
           tags: input.tags,
           params: input.params,
           media: null,
+          startup: resolveStartup({ startup: input.startup, media: null }, tx.dir),
           source: 'user'
         });
         writeTheme(tx.dir, record);
@@ -520,6 +609,22 @@ export function createLibrary({ paths, logger, media, locks }) {
     return statsCache.value;
   }
 
+  function previewStartup(id, { reducedMotion = false } = {}) {
+    const record = findRecord(id);
+    if (!record) throw new AppError('THEME_NOT_FOUND', `theme not found: ${id}`);
+    const startup = resolveStartup(record, themeDir(record));
+    const config = normalizeStartupTemplate({
+      ...startup,
+      launchId: 'preview',
+      themeName: record.name,
+      accent: record.params?.accent,
+      mediaUrl: startup.media ? mediaUrl(record.source, record.id, startup.media) : null,
+      reducedMotion,
+      preview: true
+    });
+    return { html: createStartupPreviewHtml(config), config };
+  }
+
   function pointerInfo() {
     return readJson(paths.pointer, null);
   }
@@ -534,6 +639,7 @@ export function createLibrary({ paths, logger, media, locks }) {
     exportTheme,
     ensureLocalThemes,
     stats,
+    previewStartup,
     findRecord,
     pointerInfo
   };

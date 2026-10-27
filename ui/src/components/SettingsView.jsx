@@ -23,10 +23,22 @@ const TASKS = [
   { value: 'focus', label: '聚焦' }
 ];
 
-export default function SettingsView({ themes, themeId, params, native, minimizeToTray, onMinimizeToTray, prefs, onPreference, onSaveHostPath, schedule, onSaveRule, onRemoveRule, onSelect, onSave, onCancel }) {
-  const [form, setForm] = useState(() => normalizeParams(params));
-  const [activeTab, setActiveTab] = useState('theme');
+const DEFAULT_STARTUP = { enabled: false, preset: 'zcode-pop', holdMs: 900, media: null };
+const PRESETS = [
+  { value: 'zcode-pop', label: 'ZCode 弹入' },
+  { value: 'theme-reveal', label: '主题揭幕' }
+];
+
+export default function SettingsView({ themes, themeId, params, native, bridge, minimizeToTray, onMinimizeToTray, prefs, onPreference, onHostStartup, activeHostName, onSaveHostPath, schedule, onSaveRule, onRemoveRule, onSelect, onSave, onCancel }) {
   const theme = themes.find((item) => item.id === themeId) || null;
+  const [form, setForm] = useState(() => normalizeParams(params));
+  const [startup, setStartup] = useState(() => ({ ...DEFAULT_STARTUP, ...theme?.startup }));
+  const [activeTab, setActiveTab] = useState('theme');
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewKey, setPreviewKey] = useState(0);
+  const [previewError, setPreviewError] = useState('');
   const [name, setName] = useState(() => theme?.name || '');
   const editable = !!theme && !theme.builtin;
   const [draft, setDraft] = useState({ id: null, kind: 'time', at: '22:30', dark: true, themeId: themeId });
@@ -39,11 +51,35 @@ export default function SettingsView({ themes, themeId, params, native, minimize
   useEffect(() => {
     setForm(normalizeParams(params));
     setName(theme?.name || '');
+    setStartup({ ...DEFAULT_STARTUP, ...theme?.startup });
+    setPreviewing(false);
     // Reset the form only when the edited theme changes.
     // （不装 eslint-plugin-react-hooks，故无 disable 注释；有意只依赖 themeId）
   }, [themeId]);
 
+  useEffect(() => {
+    if (!previewing || !native) return undefined;
+    let alive = true;
+    setPreview(null);
+    setPreviewUrl(null);
+    setPreviewError('');
+    bridge.request('theme.startup.preview', { themeId }).then((result) => {
+      if (!alive) return;
+      if (result.ok) setPreview(result.data);
+      else setPreviewError(result.error?.message || result.error?.code || '预览生成失败');
+    });
+    return () => { alive = false; };
+  }, [previewing, previewKey, themeId, native, bridge]);
+
+  useEffect(() => {
+    if (!previewing || !preview?.html) return undefined;
+    const url = URL.createObjectURL(new Blob([preview.html], { type: 'text/html' }));
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [previewing, preview]);
+
   const patch = (value) => setForm((current) => ({ ...current, ...value }));
+  const patchStartup = (value) => setStartup((current) => ({ ...current, ...value }));
   const patchDraft = (value) => setDraft((current) => ({ ...current, ...value }));
 
   const rules = (schedule && schedule.rules) || [];
@@ -75,6 +111,14 @@ export default function SettingsView({ themes, themeId, params, native, minimize
 
   return (
     <section className="view" data-testid="view-settings">
+      {previewing ? (
+        <div className="startup-preview-backdrop" role="presentation" onClick={() => setPreviewing(false)}>
+          <div className="startup-preview" role="dialog" aria-modal="true" aria-label="宿主启动动画预览" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape') setPreviewing(false); }}>
+            {previewUrl ? <iframe key={previewKey} title="启动动画沙盒预览" sandbox="allow-scripts" src={previewUrl} /> : <div className="startup-preview-loading">{previewError || '正在生成安全预览…'}</div>}
+            <button type="button" className="startup-preview-skip" autoFocus onClick={() => setPreviewing(false)}>关闭预览 · Esc</button>
+          </div>
+        </div>
+      ) : null}
       <div className="settings-layout">
         <header className="settings-header">
           <div>
@@ -195,6 +239,29 @@ export default function SettingsView({ themes, themeId, params, native, minimize
                 </div>
               </section>
 
+              <section className="settings-group startup-config-group">
+                <div className="settings-group-head">
+                  <h3>宿主启动动画</h3>
+                  <p>下次由 BackdropBuddy 启动 ZCode 时生效，不改变 BackdropBuddy 自己的启动画面。</p>
+                </div>
+                <label className="check startup-enabled">
+                  <input type="checkbox" checked={startup.enabled} disabled={!native || !editable} onChange={(event) => patchStartup({ enabled: event.target.checked })} data-testid="set-theme-startup-enabled" />
+                  为此主题启用启动动画
+                </label>
+                <div className="settings-fields startup-config-fields">
+                  <SelectField id="set-startup-preset" label="固定预设" value={startup.preset} options={PRESETS} disabled={!native || !editable} onChange={(value) => patchStartup({ preset: value })} testId="set-startup-preset" />
+                  <div className="field">
+                    <label htmlFor="set-startup-hold">最短停留（900–3000 毫秒）</label>
+                    <input id="set-startup-hold" className="input" type="number" min="900" max="3000" step="100" value={startup.holdMs} disabled={!native || !editable} onChange={(event) => patchStartup({ holdMs: Number(event.target.value) })} data-testid="set-startup-hold" />
+                  </div>
+                </div>
+                <div className="startup-actions">
+                  <button type="button" className="btn light" disabled={!native} onClick={() => { setPreviewKey((value) => value + 1); setPreviewing(true); }} data-testid="preview-theme-startup">预览已保存效果</button>
+                </div>
+                <p className="note">主题缩略图会用作背景；没有合适静图时使用深色渐变。预览与宿主使用同一模板，修改后先保存再预览。900ms 后可跳过，最迟约 3.5 秒交还宿主。</p>
+                {theme?.builtin ? <p className="note">内置主题的启动配置为只读；可在自己的主题上启用。</p> : null}
+              </section>
+
               <section className="settings-group last">
                 <div className="settings-group-head">
                   <h3>界面可读性</h3>
@@ -234,7 +301,7 @@ export default function SettingsView({ themes, themeId, params, native, minimize
                 >
                   取消
                 </button>
-                <button type="button" className="btn gold" onClick={() => onSave({ ...form, name })} data-testid="save-settings">保存主题参数</button>
+                <button type="button" className="btn gold" onClick={() => onSave({ ...form, name, startup })} data-testid="save-settings">保存主题参数</button>
               </div>
             </div>
           </div>
@@ -288,6 +355,17 @@ export default function SettingsView({ themes, themeId, params, native, minimize
                   />
                 </label>
               </div>
+
+              <section className="settings-group startup-anim-group">
+                <div className="settings-group-head">
+                  <h3>启动宿主</h3>
+                  <p>通过 BackdropBuddy 启动 / 重启 {activeHostName || '宿主'}，并应用当前主题的启动配置。</p>
+                </div>
+                <div className="startup-actions">
+                  <button type="button" className="btn dark" disabled={!native} onClick={onHostStartup} data-testid="launch-host-startup">启动 / 重启宿主</button>
+                </div>
+                <p className="note">请先在“主题参数”中保存启动配置。直接双击宿主图标不会触发；注入失败会静默回退，不影响宿主和皮肤。</p>
+              </section>
 
               <section className="settings-group host-path-group">
                 <div className="settings-group-head">

@@ -2,6 +2,7 @@ import { METHODS, PROTOCOL_VERSION } from '../../shared/protocol/constants.mjs';
 import { EMPTY } from './common.mjs';
 import { themeList, themeGet, themeSave, themeRemove, themeImport, themeExport, themeApply, themeEmpty } from './theme.mjs';
 import { mediaUrl } from './media.mjs';
+import { startupGet, startupUpdate } from './startup.mjs';
 import { settingsGet, settingsSet } from './settings.mjs';
 import { scheduleList, scheduleSave, scheduleRemove, scheduleTick } from './schedule.mjs';
 import { hostDetect, hostStatus, hostApply, hostRestore, hostRestart, hostPort, hostProfileBody, hostUse } from './host.mjs';
@@ -17,6 +18,7 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.THEME_LIST]: themeList,
   [METHODS.THEME_GET]: themeGet,
   [METHODS.THEME_SAVE]: themeSave,
+  [METHODS.THEME_STARTUP_PREVIEW]: themeGet,
   [METHODS.THEME_REMOVE]: themeRemove,
   [METHODS.THEME_IMPORT]: themeImport,
   [METHODS.THEME_EXPORT]: themeExport,
@@ -25,6 +27,8 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.THEME_RESUME]: themeEmpty,
   [METHODS.THEME_RESET]: themeEmpty,
   [METHODS.THEME_RESTORE]: themeEmpty,
+  [METHODS.STARTUP_GET]: startupGet,
+  [METHODS.STARTUP_UPDATE]: startupUpdate,
   [METHODS.SETTINGS_GET]: settingsGet,
   [METHODS.SETTINGS_SET]: settingsSet,
   [METHODS.SCHEDULE_LIST]: scheduleList,

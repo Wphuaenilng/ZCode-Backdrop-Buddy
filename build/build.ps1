@@ -86,7 +86,8 @@ if (-not $SkipUi) {
     } finally { Pop-Location }
 
     $html = Get-Item -LiteralPath (Join-Path $ui 'dist\index.html')
-    if ($html.Length -gt 262144) { throw ("ui/dist/index.html is " + $html.Length + " bytes; limit is 262144") }
+    # 2026-10-27 启动动画设置组使 UI 基线超过旧 256 KiB 门禁，与 inject-csp.mjs 同步上调
+    if ($html.Length -gt 294912) { throw ("ui/dist/index.html is " + $html.Length + " bytes; limit is 294912") }
   }
 }
 
@@ -109,8 +110,11 @@ if (-not $SkipTests) {
 }
 
 Invoke-Step 'msbuild' {
-  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-  if (Test-Path -LiteralPath $vswhere) {
+  # Minimal automation environments may omit ProgramFiles(x86); ask Windows
+  # instead of passing a null path to Join-Path before trying the other fallbacks.
+  $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+  $vswhere = if ($programFilesX86) { Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe' } else { $null }
+  if ($vswhere -and (Test-Path -LiteralPath $vswhere)) {
     $found = & $vswhere '-latest' '-products' '*' '-requires' 'Microsoft.Component.MSBuild' '-find' 'MSBuild\**\Bin\MSBuild.exe' 2>$null
     if ($found) { $script:msbuild = @($found)[0] }
   }

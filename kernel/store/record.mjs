@@ -1,6 +1,27 @@
 import { TAGS } from '../schema/common.mjs';
+import { STARTUP_LIMITS, STARTUP_PRESETS } from '../host/startup-template.mjs';
 
 export const RECORD_SCHEMA = 'backdropbuddy.theme/1';
+
+export const DEFAULT_STARTUP = Object.freeze({
+  enabled: false,
+  preset: 'zcode-pop',
+  holdMs: 900,
+  media: null
+});
+
+export function normalizeStartup(value = {}) {
+  const input = value && typeof value === 'object' ? value : {};
+  const holdMs = Number(input.holdMs);
+  return {
+    enabled: input.enabled === true,
+    preset: STARTUP_PRESETS.includes(input.preset) ? input.preset : DEFAULT_STARTUP.preset,
+    holdMs: Number.isFinite(holdMs)
+      ? Math.min(STARTUP_LIMITS.maxHoldMs, Math.max(STARTUP_LIMITS.minHoldMs, Math.round(holdMs)))
+      : DEFAULT_STARTUP.holdMs,
+    media: typeof input.media === 'string' && input.media ? input.media : null
+  };
+}
 
 export const DEFAULT_PARAMS = {
   mode: 'auto',
@@ -40,6 +61,7 @@ export function createRecord({
   tags,
   params,
   media = null,
+  startup = DEFAULT_STARTUP,
   source = 'user',
   createdAt = Date.now(),
   updatedAt = createdAt
@@ -62,6 +84,7 @@ export function createRecord({
     tags: normalizeTags(tags),
     params: normalizeParams(params),
     media: media || null,
+    startup: normalizeStartup(startup),
     source,
     createdAt,
     updatedAt
@@ -77,6 +100,7 @@ export function normalizeRecord(raw, { source = 'user' } = {}) {
       tags: raw.tags,
       params: raw.params,
       media: raw.media || null,
+      startup: raw.startup,
       source: raw.source || source,
       createdAt: Number(raw.createdAt) || Date.now(),
       updatedAt: Number(raw.updatedAt) || Number(raw.createdAt) || Date.now()

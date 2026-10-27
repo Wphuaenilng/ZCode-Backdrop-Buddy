@@ -15,17 +15,24 @@ export class CdpSession {
     this.socket = socket;
     this.seq = 0;
     this.pending = new Map();
+    this.handlers = new Map();
     this.closed = false;
 
     socket.addEventListener('message', (event) => {
       let message;
       try { message = JSON.parse(typeof event.data === 'string' ? event.data : String(event.data)); } catch { return; }
-      if (!message.id) return;
-      const entry = this.pending.get(message.id);
-      if (!entry) return;
-      this.pending.delete(message.id);
-      if (message.error) entry.reject(new Error(message.error.message || 'CDP error'));
-      else entry.resolve(message.result);
+      if (message.id) {
+        const entry = this.pending.get(message.id);
+        if (!entry) return;
+        this.pending.delete(message.id);
+        if (message.error) entry.reject(new Error(message.error.message || 'CDP error'));
+        else entry.resolve(message.result);
+        return;
+      }
+      if (!message.method) return;
+      for (const handler of this.handlers.get(message.method) || []) {
+        try { handler(message.params || {}, message); } catch { /* event observers must not break CDP responses */ }
+      }
     });
 
     socket.addEventListener('close', () => {
@@ -46,7 +53,18 @@ export class CdpSession {
     return new CdpSession(socket);
   }
 
-  send(method, params = {}, timeoutMs = 8000) {
+  on(method, handler) {
+    if (typeof handler !== 'function') throw new TypeError('CDP event handler must be a function');
+    if (!this.handlers.has(method)) this.handlers.set(method, new Set());
+    const handlers = this.handlers.get(method);
+    handlers.add(handler);
+    return () => {
+      handlers.delete(handler);
+      if (!handlers.size) this.handlers.delete(method);
+    };
+  }
+
+  send(method, params = {}, timeoutMs = 8000, sessionId = null) {
     if (this.closed) return Promise.reject(new Error('CDP socket is closed'));
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
@@ -58,7 +76,7 @@ export class CdpSession {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
         reject: (error) => { clearTimeout(timer); reject(error); }
       });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
 
@@ -80,25 +98,34 @@ export class CdpSession {
   }
 }
 
-export async function openCdp(statusOrTarget, { timeoutMs = 5000 } = {}) {
-  // 既接受整份 detect 结果（沿用主目标），也接受单个 target 摘要，方便多窗口逐个连接
-  const target = statusOrTarget && statusOrTarget.wsUrl
-    ? statusOrTarget
-    : statusOrTarget && statusOrTarget.target;
-  const wsUrl = target && target.wsUrl;
+async function openLoopbackCdp(wsUrl, { timeoutMs, kind }) {
   if (!wsUrl) throw new AppError('HOST_NOT_READY', '宿主调试目标不可用', { retryable: true });
-
   let parsed;
   try { parsed = new URL(wsUrl); } catch { throw new AppError('HOST_UNREACHABLE', '宿主调试地址格式无效'); }
   if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(parsed.hostname)) {
     throw new AppError('HOST_UNREACHABLE', `拒绝连接非回环调试地址：${parsed.hostname}`);
   }
-
   try {
     return await CdpSession.open(wsUrl, { timeoutMs });
   } catch (error) {
-    throw new AppError('HOST_UNREACHABLE', `无法连接宿主调试页面：${error.message}`, { retryable: true });
+    throw new AppError('HOST_UNREACHABLE', `无法连接宿主调试${kind}：${error.message}`, { retryable: true });
   }
+}
+
+export async function openCdp(statusOrTarget, { timeoutMs = 5000 } = {}) {
+  // 既接受整份 detect 结果（沿用主目标），也接受单个 target 摘要，方便多窗口逐个连接
+  const target = statusOrTarget && statusOrTarget.wsUrl
+    ? statusOrTarget
+    : statusOrTarget && statusOrTarget.target;
+  return openLoopbackCdp(target && target.wsUrl, { timeoutMs, kind: '页面' });
+}
+
+// 浏览器级连接用于 Target.setAutoAttach；只接受 /json/version 的回环 WS 或等价 URL。
+export async function openBrowserCdp(versionOrUrl, { timeoutMs = 5000 } = {}) {
+  const wsUrl = typeof versionOrUrl === 'string'
+    ? versionOrUrl
+    : versionOrUrl && (versionOrUrl.webSocketDebuggerUrl || versionOrUrl.browserWsUrl);
+  return openLoopbackCdp(wsUrl, { timeoutMs, kind: '浏览器' });
 }
 
 function isDark(page) {

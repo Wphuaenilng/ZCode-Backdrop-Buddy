@@ -1,6 +1,7 @@
 import { METHODS } from '../../shared/protocol/constants.mjs';
 import { METHOD_SCHEMAS } from '../schema/methods.mjs';
 import { restoreThemeState } from './theme-state.mjs';
+import { clearStartupThemeRef } from './startup-animation.mjs';
 
 function clearActiveTheme(ctx) {
   try { ctx.pointer.clear(); } catch { /* pointer rewrite is best effort here */ }
@@ -10,6 +11,7 @@ function clearActiveTheme(ctx) {
 export default function register(registry, ctx) {
   registry.register(METHODS.THEME_REMOVE, METHOD_SCHEMAS[METHODS.THEME_REMOVE], async ({ themeId }) => {
     const result = await ctx.library.remove(themeId);
+    clearStartupThemeRef(ctx, themeId);
     if (ctx.pointer.read().activeThemeId !== themeId) return result;
 
     try {

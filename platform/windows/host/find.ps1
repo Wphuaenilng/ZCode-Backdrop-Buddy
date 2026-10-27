@@ -77,10 +77,10 @@ try {
     $shell = $null
     try { $shell = New-Object -ComObject WScript.Shell } catch { $shell = $null }
     if ($shell) {
-      $startRoots = @(
-        (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'),
-        (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')
-      )
+      $startRoots = @()
+      foreach ($base in @($env:APPDATA, $env:ProgramData)) {
+        if ($base) { $startRoots += (Join-Path $base 'Microsoft\Windows\Start Menu\Programs') }
+      }
       foreach ($root in $startRoots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         foreach ($shortcut in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.lnk' -File -ErrorAction SilentlyContinue)) {

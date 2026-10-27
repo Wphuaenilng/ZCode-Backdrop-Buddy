@@ -4,7 +4,9 @@ param(
   [int]$CloseWaitMs = 5000,
   [int]$LaunchWaitMs = 20000,
   [string]$AppxPackage = '',
-  [string]$ExeName = 'ChatGPT.exe'
+  [string]$ExeName = 'ChatGPT.exe',
+  [string]$StartupConfig = '',
+  [string]$StartupResult = ''
 )
 
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -67,6 +69,64 @@ function Get-PortOwner([int]$Port) {
   return $null
 }
 
+$script:StartupInjector = $null
+$script:StartupInjection = $null
+
+function Start-StartupInjector {
+  if (-not $StartupConfig) { return }
+  try {
+    $appRoot = $env:BACKDROPBUDDY_APP_ROOT
+    $node = if ($appRoot) { Join-Path $appRoot 'runtime\node\node.exe' } else { '' }
+    $script = if ($appRoot) { Join-Path $appRoot 'kernel\host\startup-injector.mjs' } else { '' }
+    if (-not $appRoot -or -not (Test-Path -LiteralPath $node) -or -not (Test-Path -LiteralPath $script) -or
+        -not (Test-Path -LiteralPath $StartupConfig) -or -not $StartupResult) {
+      throw 'startup injector configuration or runtime is unavailable'
+    }
+    $arguments = @('"' + $script + '"', '--config="' + $StartupConfig + '"')
+    $script:StartupInjector = Start-Process -FilePath $node -ArgumentList $arguments `
+      -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru `
+      -RedirectStandardOutput ($StartupResult + '.stdout.log') `
+      -RedirectStandardError ($StartupResult + '.stderr.log')
+  } catch {
+    $script:StartupInjection = @{ attached = $false; injected = $false; elapsedMs = 0; reason = ('injector-start-failed: ' + $_.Exception.Message) }
+  }
+}
+
+function Wait-StartupInjector([bool]$AllowWait) {
+  if (-not $script:StartupInjector) { return }
+  $process = $script:StartupInjector
+  $exited = $false
+  try { $exited = $process.WaitForExit($(if ($AllowWait) { 6000 } else { 0 })) } catch { $exited = $process.HasExited }
+  if (-not $exited) {
+    # Only the exact child process created above is ever stopped here.
+    try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
+    if (-not $script:StartupInjection) {
+      $script:StartupInjection = @{ attached = $false; injected = $false; elapsedMs = 0; reason = 'injector-result-timeout' }
+    }
+  }
+  if (Test-Path -LiteralPath $StartupResult) {
+    try {
+      $value = Get-Content -LiteralPath $StartupResult -Raw | ConvertFrom-Json
+      $script:StartupInjection = @{
+        attached = [bool]$value.attached
+        injected = [bool]$value.injected
+        elapsedMs = [int]$value.elapsedMs
+        reason = [string]$value.reason
+        attachAfterPortMs = $(if ($null -ne $value.attachAfterPortMs) { [int]$value.attachAfterPortMs } else { $null })
+      }
+    } catch { }
+  }
+}
+
+function Stop-OwnedStartupInjector {
+  if (-not $script:StartupInjector) { return }
+  try {
+    if (-not $script:StartupInjector.HasExited) { Stop-Process -Id $script:StartupInjector.Id -Force -ErrorAction Stop }
+  } catch { }
+  try { $script:StartupInjector.Dispose() } catch { }
+  $script:StartupInjector = $null
+}
+
 try {
   # ExePath 为空或不存在时（内置 MSIX 宿主），按 -AppxPackage 解析真实安装路径
   $exe = $null
@@ -109,6 +169,9 @@ try {
     }
     return
   }
+
+  # 端口已开放时上面已经返回；只有确实要停/启本次宿主才允许启动注入器。
+  Start-StartupInjector
 
   $stopped = @($existing | ForEach-Object { $_.Id })
   foreach ($process in $existing) {
@@ -161,6 +224,8 @@ try {
     Start-Sleep -Milliseconds 250
   }
 
+  Wait-StartupInjector $open
+
   Send-Json @{
     ok = $open
     alreadyOpen = $false
@@ -169,10 +234,13 @@ try {
     pid = $started.Id
     stopped = $stopped
     forced = $forced
+    startupInject = $script:StartupInjection
     error = $(if (-not $open) {
       @{ code = 'DEBUG_PORT_TIMEOUT'; message = "$([System.IO.Path]::GetFileName($exe)) started (PID $($started.Id)) but port $Port did not open within ${LaunchWaitMs}ms" }
     } else { $null })
   }
 } catch {
-  Send-Json @{ ok = $false; error = @{ code = 'RESTART_FAILED'; message = $_.Exception.Message } }
+  Send-Json @{ ok = $false; error = @{ code = 'RESTART_FAILED'; message = $_.Exception.Message }; startupInject = $script:StartupInjection }
+} finally {
+  Stop-OwnedStartupInjector
 }

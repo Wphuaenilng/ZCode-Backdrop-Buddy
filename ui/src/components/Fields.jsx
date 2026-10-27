@@ -22,13 +22,14 @@ export function RangeField({ id, label, value, min = 0, max = 100, onChange, tes
   );
 }
 
-export function SelectField({ id, label, value, options, onChange, testId }) {
+export function SelectField({ id, label, value, options, onChange, testId, disabled = false }) {
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
       <select
         id={id}
         className="select2"
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         data-testid={testId || id}

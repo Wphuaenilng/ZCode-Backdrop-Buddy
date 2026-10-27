@@ -2,6 +2,21 @@ export const TAGS = ['动态', '人物', '动漫', '风景', '城市', '萌宠',
 
 export const EMPTY = { type: 'object', additionalProperties: false };
 
+export const startup = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    enabled: { type: 'boolean', default: false },
+    preset: { type: 'string', enum: ['zcode-pop', 'theme-reveal'], default: 'zcode-pop' },
+    holdMs: { type: 'integer', minimum: 900, maximum: 3000, default: 900 },
+    media: {
+      type: ['string', 'null'],
+      maxLength: 255,
+      pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$'
+    }
+  }
+};
+
 export const themeId = {
   type: 'string',
   minLength: 1,

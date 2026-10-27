@@ -111,6 +111,7 @@ export async function createKernel(options = {}) {
     profile,
     runtime,
     getPreferences: () => config.get(),
+    getStartupTheme: () => library.get(config.get().selectedThemeId || config.get().lastAppliedThemeId),
     session: options.session
   });
   const bus = new EventBus();
@@ -143,6 +144,7 @@ export async function createKernel(options = {}) {
         profile: nextProfile,
         runtime,
         getPreferences: () => config.get(),
+        getStartupTheme: () => library.get(config.get().selectedThemeId || config.get().lastAppliedThemeId),
         session: options.session
       }))
     }

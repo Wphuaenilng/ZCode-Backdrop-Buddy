@@ -176,7 +176,13 @@ test('host profile: discovery prefers an existing explicit path', async (t) => {
   assert.equal(found.source, 'env');
 });
 
-test('host platform: executable discovery reports a missing name', async () => {
+test('host platform: executable discovery reports a missing name', async (t) => {
+  const programData = process.env.ProgramData;
+  delete process.env.ProgramData;
+  t.after(() => {
+    if (programData === undefined) delete process.env.ProgramData;
+    else process.env.ProgramData = programData;
+  });
   const result = await runPowerShellJson('host/find.ps1', {
     appRoot: ROOT,
     args: ['-Name', 'BackdropBuddyMissingHost.exe']

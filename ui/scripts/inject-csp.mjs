@@ -7,7 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
 const indexPath = path.join(dist, 'index.html');
 const placeholder = '<meta name="bb-csp" content="pending">';
-const limit = 256 * 1024;
+// 2026-10-27 启动动画设置组使基线到达 262,097/262,144（余量 47 字节），上调到 288 KiB。
+const limit = 288 * 1024;
 
 if (!fs.existsSync(indexPath)) throw new Error(`missing build output: ${indexPath}`);
 
@@ -32,6 +33,7 @@ const csp = [
   "base-uri 'none'",
   "form-action 'none'",
   "object-src 'none'",
+  "frame-src blob:",
   "frame-ancestors 'none'"
 ].join('; ');
 
