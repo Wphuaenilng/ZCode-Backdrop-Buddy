@@ -169,3 +169,34 @@ test('startup preview: fixed template installs inside a sandboxed child, without
   assert.doesNotMatch(html, /evil\.example/);
   assert.match(html, /default-src 'none'/);
 });
+
+test('startup preview: layer replays after finish instead of leaving a blank frame', (t) => {
+  const require = createRequire(path.join(ROOT, 'ui', 'package.json'));
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<!doctype html><body></body>', {
+    url: 'https://shell.backdropbuddy.invalid/',
+    runScripts: 'outside-only',
+    pretendToBeVisual: true
+  });
+  t.after(() => dom.window.close());
+  const win = dom.window;
+  let now = 100000;
+  win.performance.now = () => now;
+  win.matchMedia = () => ({ matches: false });
+  const source = startupScript({ launchId: 'preview', themeName: '重播主题' }, { preview: true });
+  const result = win.eval(source);
+  assert.equal(result.installed, true);
+  const firstLayer = win.document.querySelector('#backdropbuddy-startup-layer');
+  assert.ok(firstLayer);
+
+  now += 2000; // 越过 finish 里 900ms 的跳过保护
+  win.__backdropBuddyStartupLayer.dispose();
+  assert.match(firstLayer.className, /bb-startup-leaving/);
+
+  return new Promise((resolve) => setTimeout(resolve, 700)).then(() => {
+    const replayed = win.document.querySelector('#backdropbuddy-startup-layer');
+    assert.ok(replayed, 'preview layer should be reinstalled after finish');
+    assert.notEqual(replayed, firstLayer);
+    assert.doesNotMatch(replayed.className, /bb-startup-leaving/);
+  });
+});

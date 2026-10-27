@@ -97,7 +97,7 @@ export function installStartupLayer(rawOptions) {
   const reduced = options.reducedMotion === true || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fadeMs = reduced ? 150 : 180;
   const holdMs = Math.max(900, Math.min(3000, Number(options.holdMs) || 900));
-  const startedAt = performance.now();
+  let startedAt = performance.now();
   const state = { installed: false, finished: false, removed: false, reason: null };
   let layer = null;
   let style = null;
@@ -106,6 +106,7 @@ export function installStartupLayer(rawOptions) {
   let holdTimer = 0;
   let deadlineTimer = 0;
   let cleanupTimer = 0;
+  let replayTimer = 0;
 
   function report(stage, extra) {
     try {
@@ -135,6 +136,7 @@ export function installStartupLayer(rawOptions) {
     clearTimeout(holdTimer);
     clearTimeout(deadlineTimer);
     clearTimeout(cleanupTimer);
+    clearTimeout(replayTimer);
     if (observer) observer.disconnect();
     window.removeEventListener('keydown', onKey, true);
     if (layer) layer.remove();
@@ -157,7 +159,20 @@ export function installStartupLayer(rawOptions) {
       layer.style.transitionDuration = `${fadeMs}ms`;
     }
     report('finishing', { reason });
-    cleanupTimer = setTimeout(remove, fadeMs);
+    // The preview iframe has no host to signal readiness; loop the animation
+    // there instead of tearing the layer down and leaving a blank page.
+    if (options.preview) replayTimer = setTimeout(replay, fadeMs + 320);
+    else cleanupTimer = setTimeout(remove, fadeMs);
+  }
+
+  function replay() {
+    if (state.removed) return;
+    if (layer) layer.remove();
+    state.installed = false;
+    state.finished = false;
+    state.reason = null;
+    startedAt = performance.now();
+    installDom();
   }
 
   function onKey(event) {
@@ -171,9 +186,10 @@ export function installStartupLayer(rawOptions) {
 
   function installDom() {
     if (state.installed || state.removed || !document.documentElement) return;
-    style = document.createElement('style');
-    style.id = 'backdropbuddy-startup-style';
-    style.textContent = `
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'backdropbuddy-startup-style';
+      style.textContent = `
       html.bb-startup-cover::before{content:"";position:fixed;inset:0;z-index:2147483647;background:#101216;pointer-events:auto}
       #loading{opacity:0!important}
       .bb-startup{position:fixed;inset:0;z-index:2147483646;overflow:hidden;opacity:1;pointer-events:auto;-webkit-app-region:drag;background:#101216;color:#fff;transition:opacity ${fadeMs}ms ease;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
@@ -199,7 +215,8 @@ export function installStartupLayer(rawOptions) {
       @keyframes bb-startup-sweep{0%{transform:translateX(-110%)}100%{transform:translateX(220%)}}
       @keyframes bb-startup-reveal{0%{transform:scale(1.02)}100%{transform:scale(1.09)}}
     `;
-    document.documentElement.appendChild(style);
+      document.documentElement.appendChild(style);
+    }
     document.documentElement.classList.add('bb-startup-cover');
 
     layer = document.createElement('div');
@@ -238,6 +255,7 @@ export function installStartupLayer(rawOptions) {
     document.documentElement.classList.remove('bb-startup-cover');
     report('installed', { reducedMotion: reduced, preset: options.preset });
 
+    window.removeEventListener('keydown', onKey, true);
     window.addEventListener('keydown', onKey, true);
     holdTimer = setTimeout(() => { if (hostReady()) finish('ready'); }, holdMs);
     deadlineTimer = setTimeout(() => finish('timeout'), Math.max(900, 3500 - fadeMs));
