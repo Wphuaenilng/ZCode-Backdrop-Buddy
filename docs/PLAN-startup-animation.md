@@ -47,6 +47,19 @@
 
 测试后已通过 Windows 设置恢复 100% 缩放并重新开启动画，复核 `systemDpi=96`、`clientAreaAnimation=true`、`MinAnimate="1"`、`visualFXSetting=2`。所有临时宿主正常关闭，9347 端口与测试进程无残留。
 
+### 0.2.1 新笔记本设备复验（2026-10-27）
+
+在新节点 **LENOVO 81V4 笔记本**上，使用当前提交 `09efa81` 的 Release 目录 `build/out/BackdropBuddy-1.1.1` 和真实 ZCode `3.16.3.8992` 完成复验。环境为 Windows 11 Home 26200、当前 125% 缩放（独立 DPI 上下文读取 `systemDpi=120`，宿主 DPR `1.25`）、单台物理显示器，系统动画保持开启。每个场景使用独立数据目录和独立回环调试端口；未操作用户既有宿主进程，未修改系统动画或 DPI 设置，未向宿主安装目录写入。本轮未重做安装文件全量哈希，P3-4 的完整性结论不被扩大解释。
+
+| 场景 | 实测结果 | 判定 |
+| --- | --- | --- |
+| 正常交还 | `theme-reveal` 注入成功，页面采样记录 `finished=true / reason=ready`，最终启动层、样式和 API 均清理；`attachAfterPortMs=586` | 通过 |
+| 真实跳过 | `zcode-pop` 安装后 100.7ms 的 CDP 鼠标点击被 900ms 保护期忽略，1395.3ms 再次点击后以 `skipped` 交还 | 通过；不是原生 OS 键鼠测试 |
+| 故障回退 | 注入器配置非法端口 `0`，以 `invalid loopback CDP port` 失败开放；默认启动画面可见，主题层从未出现，宿主最终 ready | 通过 |
+| 注入器强杀恢复 | 目标处于 `waitingForDebugger` 时仅强杀本次注入器，宿主恢复默认启动并最终 ready，无白屏或启动层残留 | 通过 |
+
+两种预设均验证启动层铺满视口、主题媒体进入实际计算样式、Logo 和跳过按钮不越界、无文档溢出。CSS 视口为 1536 × 816，实际截图为 1920 × 1020；正常、跳过、回退与恢复截图均已逐张查看。结束后本次宿主与注入器进程残留为 0。汇总证据为 `.kimi-work/startup-production/device-laptop-2026-10-27/evidence-2026-10-27T14-58-14-005Z/summary.json`，视觉复核为同目录 `visual-review.json`，环境及 DPI 记录为 `device.json` 与 `dpi-context.json`。当前设备只覆盖 125% 缩放和系统动画开启状态；其他 DPI、真实系统减少动态效果未在本节点重复执行，多显示器仍未覆盖。
+
 ### 0.3 尚未关闭的验收边界
 
 - 当前只有一台物理显示器，多显示器尚未实测；原生 OS 键鼠输入尚未实测，既有输入验证使用 CDP 或 DOM。
@@ -245,7 +258,7 @@
 | P3-3 | 通过（真实宿主） | spike 与生产验收各覆盖一次暂停目标后的注入器强杀，均恢复且无启动层残留 |
 | P3-4 | 通过（真实宿主） | 前后快照完整覆盖 `.zcode-install-manifest` 的 1429 项；复制到工作区后计算 SHA-256，变化 / 缺失 / 新增均为 0，清单自身未变；快照之间四种真实生产场景回归全部通过 |
 | P3-5 | 通过（真实原生多窗口） | 真实 Electron `BrowserWindow` / `WebContentsView` 加载实际 ZCode renderer：主窗口完成注入、显示与清理；`update-status`、插件沙箱、内嵌浏览器均被 `autoAttach` 观察到，但无启动层、样式或启动 API，且页面可响应。证据：`.kimi-work/startup-production/multiwindow-p3-5-2026-10-27/native-evidence-2026-10-27T13-03-25-587Z/summary.json`。这不是通过 ZCode 最终用户 UI 流程打开辅助页面的验收 |
-| P3-6 | 部分通过（真实宿主） | 真实系统减少动态效果已通过，修复了进度条伪元素动画未停用的问题并补自动化；100% / 125% / 150% / 200% DPI 逐档通过且截图已人工查看；最新 100% DPI 复核全部断言通过，证据为 `.kimi-work/startup-production/display-p3-6-2026-10-27/dpi100-recheck-evidence/summary.json`。最新多显示器预检仍只有 `\\.\DISPLAY1`，见 `multimonitor-preflight-2026-10-27.json`；多显示器未覆盖，不能判定整项完成 |
+| P3-6 | 部分通过（真实宿主） | 真实系统减少动态效果已通过，修复了进度条伪元素动画未停用的问题并补自动化；100% / 125% / 150% / 200% DPI 逐档通过且截图已人工查看；最新 100% DPI 复核全部断言通过，证据为 `.kimi-work/startup-production/display-p3-6-2026-10-27/dpi100-recheck-evidence/summary.json`。新增 LENOVO 81V4 笔记本节点，在当前 125% 缩放下通过正常交还、跳过、故障回退和强杀恢复，证据为 `.kimi-work/startup-production/device-laptop-2026-10-27/evidence-2026-10-27T14-58-14-005Z/summary.json`。该节点与最新预检均只有 `\\.\DISPLAY1`；多显示器未覆盖，不能判定整项完成 |
 | P3-7 | 通过（自动化） | `startup-theme.test.mjs` 覆盖旧主题默认关闭、旧 `.bbskin` 导入、含启动配置的导出再导入、媒体字节保持一致与持久化 |
 | P3-8 | 完成 | `docs/README.md` 已写明设置路径、保存后预览、生效边界、素材限制与失败回退 |
 

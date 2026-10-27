@@ -96,7 +96,9 @@ if (-not $SkipTests) {
     $testFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests\kernel') -Filter '*.test.mjs' -File |
       Sort-Object Name | ForEach-Object { $_.FullName })
     if ($testFiles.Count -eq 0) { throw 'no kernel test files found' }
-    $output = & $node --test @testFiles 2>&1
+    # 并发固定为 2：默认并发 = 逻辑核数，8 路并发各自冷启动 powershell.exe
+    # （Defender 实时扫描叠加），机器一忙就撞 15s 脚本超时，属环境性假失败
+    $output = & $node --test --test-concurrency=2 @testFiles 2>&1
     $code = $LASTEXITCODE
     $output | Set-Content -LiteralPath (Join-Path $OutputRoot 'kernel-tests.log') -Encoding UTF8
     if ($code -ne 0) {
