@@ -1059,9 +1059,9 @@ export default function App() {
     showToast('已导入主题包：' + theme.name);
   }, [callKernel, refreshThemes, bridge, showToast]);
 
-  const exportNative = useCallback(async (suggestedName) => {
+  const exportNative = useCallback(async (suggestedName, kind = 'pack') => {
     const picked = await callKernel('file.pick', {
-      kind: 'pack',
+      kind,
       mode: 'save',
       suggestedName
     });
@@ -1079,7 +1079,13 @@ export default function App() {
       showToast('导出失败：' + (result.error?.message || result.error?.code || '未知错误'));
       return;
     }
-    showToast('已导出主题包：' + (picked.data.name || picked.data.path));
+    // 内核按扩展名分派导出格式，未知扩展名已经直接报错；这里兜的是
+    // 用户在“下载素材”里选了 .bbskin / .json 的情况——导出会成功，但拿到的不是素材。
+    if (kind === 'media' && result.data?.format !== 'media') {
+      showToast('导出失败：这个文件名不是素材格式，请改用 .jpg / .png / .mp4 等素材后缀');
+      return;
+    }
+    showToast((kind === 'media' ? '已下载素材：' : '已导出主题包：') + (picked.data.name || picked.data.path));
   }, [selectedTheme, callKernel, showToast]);
 
   const exportTheme = useCallback(async () => {
@@ -1096,12 +1102,21 @@ export default function App() {
     if (!selectedTheme) return;
 
     if (native) {
-      await exportNative(`${selectedTheme.name || 'theme'}-素材.bbskin`);
+      const file = selectedTheme.media?.file || '';
+      if (!file) {
+        showToast('这个主题没有可下载的素材');
+        return;
+      }
+      const dot = file.lastIndexOf('.');
+      const extension = dot >= 0 ? file.slice(dot) : '';
+      await exportNative(`${selectedTheme.name || 'theme'}${extension}`, 'media');
       return;
     }
 
     if (selectedTheme.image && selectedTheme.image.startsWith('data:')) {
-      downloadDataUrl(selectedTheme.image, selectedTheme.name + '.jpg');
+      const mime = selectedTheme.image.slice(5, selectedTheme.image.indexOf(';')).toLowerCase();
+      const extension = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : mime === 'image/gif' ? '.gif' : '.jpg';
+      downloadDataUrl(selectedTheme.image, selectedTheme.name + extension);
       showToast('已下载素材');
       return;
     }

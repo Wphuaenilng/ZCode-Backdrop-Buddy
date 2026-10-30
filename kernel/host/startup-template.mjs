@@ -2,13 +2,17 @@ export const STARTUP_PRESETS = Object.freeze(['zcode-pop', 'theme-reveal']);
 export const STARTUP_LIMITS = Object.freeze({
   minHoldMs: 900,
   maxHoldMs: 3000,
-  maxDurationMs: 3500,
+  // 下限要覆盖最长淡出（180ms）+ 最短停留（900ms），否则配置值会被
+  // deadlineTimer 的 Math.max(900, ...) 截断到跳过保护之前就 timeout。
+  minMaxDurationMs: 1080,
+  maxDurationMs: 20000,
   maxMediaBytes: 500 * 1024
 });
 
 const DEFAULT_TEMPLATE = Object.freeze({
   preset: 'zcode-pop',
   holdMs: 900,
+  maxDurationMs: 20000,
   themeName: 'ZCode',
   accent: '#6f9275',
   mediaUrl: null,
@@ -29,6 +33,7 @@ function safeMediaUrl(value) {
 export function normalizeStartupTemplate(value = {}) {
   const input = value && typeof value === 'object' ? value : {};
   const hold = Number(input.holdMs);
+  const maxDuration = Number(input.maxDurationMs);
   const launchId = typeof input.launchId === 'string' && /^[a-z0-9-]{8,64}$/i.test(input.launchId)
     ? input.launchId
     : DEFAULT_TEMPLATE.launchId;
@@ -37,6 +42,9 @@ export function normalizeStartupTemplate(value = {}) {
     holdMs: Number.isFinite(hold)
       ? Math.min(STARTUP_LIMITS.maxHoldMs, Math.max(STARTUP_LIMITS.minHoldMs, Math.round(hold)))
       : DEFAULT_TEMPLATE.holdMs,
+    maxDurationMs: Number.isFinite(maxDuration)
+      ? Math.min(STARTUP_LIMITS.maxDurationMs, Math.max(STARTUP_LIMITS.minMaxDurationMs, Math.round(maxDuration)))
+      : DEFAULT_TEMPLATE.maxDurationMs,
     themeName: typeof input.themeName === 'string' && input.themeName.trim()
       ? input.themeName.trim().slice(0, 24)
       : DEFAULT_TEMPLATE.themeName,
@@ -85,6 +93,7 @@ export function installStartupLayer(rawOptions) {
       const handoff = storage.getItem(handoffKey) === options.launchId;
       if (handoff) storage.removeItem(handoffKey);
       if (!handoff && storage.getItem(shownKey) === options.launchId) {
+        report('skipped', { reason: 'already-shown', ...stateSnapshot() });
         return { installed: false, reason: 'already-shown' };
       }
       storage.setItem(shownKey, options.launchId);
@@ -97,7 +106,12 @@ export function installStartupLayer(rawOptions) {
   const reduced = options.reducedMotion === true || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fadeMs = reduced ? 150 : 180;
   const holdMs = Math.max(900, Math.min(3000, Number(options.holdMs) || 900));
+  const maxDurationMs = Math.max(900, Number(options.maxDurationMs) || 20000);
+  // 本函数会被 toString() 序列化后注入宿主，不能引用模块级常量；
+  // 正文等待上限因此写成局部常量。
+  const CONTENT_WAIT_MS = 1500;
   let startedAt = performance.now();
+  let readyAt = 0;
   const state = { installed: false, finished: false, removed: false, reason: null };
   let layer = null;
   let style = null;
@@ -129,6 +143,52 @@ export function installStartupLayer(rawOptions) {
     );
   }
 
+  function hostLoadingGone() {
+    const loading = document.getElementById('loading');
+    if (!loading) return true;
+    const style = window.getComputedStyle(loading);
+    return style.display === 'none' || style.visibility === 'hidden';
+  }
+
+  function stateSnapshot() {
+    const loading = document.getElementById('loading');
+    const root = document.querySelector('#root');
+    const loadingStyle = loading ? window.getComputedStyle(loading) : null;
+    const rootStyle = root ? window.getComputedStyle(root) : null;
+    return {
+      bodyClass: document.body ? document.body.className : '',
+      loading: !!loading,
+      loadingDisplay: loadingStyle ? loadingStyle.display : null,
+      loadingOpacity: loadingStyle ? loadingStyle.opacity : null,
+      rootOpacity: rootStyle ? rootStyle.opacity : null,
+      rootChildren: root ? root.childElementCount : null,
+      rootText: root ? (root.innerText || '').slice(0, 40) : null
+    };
+  }
+
+  function hostContentReady() {
+    const root = document.querySelector('#root');
+    if (!root) return false;
+    return ((root.innerText || root.textContent) || '').trim().length > 0;
+  }
+
+  function handoffReady() {
+    // 预览 iframe 没有宿主正文，#root 内容条件只适用于真实宿主启动。
+    if (options.preview === true) return true;
+    if (!hostReady()) return false;
+    if (!readyAt) {
+      readyAt = performance.now();
+      report('host-ready', { elapsedMs: Math.round(readyAt - startedAt), ...stateSnapshot() });
+    }
+    const sinceReady = performance.now() - readyAt;
+    // 宿主 ready 后还会先挂一个无文字的 React 启动占位页；只等 #loading 会露出它。
+    // 正文有内容后再交还；#loading 残留时最多再等 600ms。
+    // 但正文自身也要兜底：宿主若始终不出文本（canvas 渲染、挂载失败），
+    // 内容条件会把启动层一直按到硬截止，不能让单条判据独占那条路径。
+    if (sinceReady >= CONTENT_WAIT_MS) return true;
+    return hostContentReady() && (hostLoadingGone() || sinceReady >= 600);
+  }
+
   function remove() {
     if (state.removed) return;
     state.removed = true;
@@ -143,7 +203,7 @@ export function installStartupLayer(rawOptions) {
     if (style) style.remove();
     document.documentElement.classList.remove('bb-startup-cover');
     if (window.__backdropBuddyStartupLayer === api) delete window.__backdropBuddyStartupLayer;
-    report('removed', { reason: state.reason });
+    report('removed', { reason: state.reason, elapsedMs: Math.round(performance.now() - startedAt), ...stateSnapshot() });
   }
 
   function finish(reason) {
@@ -158,7 +218,7 @@ export function installStartupLayer(rawOptions) {
       layer.classList.add('bb-startup-leaving');
       layer.style.transitionDuration = `${fadeMs}ms`;
     }
-    report('finishing', { reason });
+    report('finishing', { reason, elapsedMs: Math.round(performance.now() - startedAt), ...stateSnapshot() });
     // The preview iframe has no host to signal readiness; loop the animation
     // there instead of tearing the layer down and leaving a blank page.
     if (options.preview) replayTimer = setTimeout(replay, fadeMs + 320);
@@ -172,6 +232,7 @@ export function installStartupLayer(rawOptions) {
     state.finished = false;
     state.reason = null;
     startedAt = performance.now();
+    readyAt = 0;
     installDom();
   }
 
@@ -257,10 +318,10 @@ export function installStartupLayer(rawOptions) {
 
     window.removeEventListener('keydown', onKey, true);
     window.addEventListener('keydown', onKey, true);
-    holdTimer = setTimeout(() => { if (hostReady()) finish('ready'); }, holdMs);
-    deadlineTimer = setTimeout(() => finish('timeout'), Math.max(900, 3500 - fadeMs));
+    holdTimer = setTimeout(() => { if (handoffReady()) finish('ready'); }, holdMs);
+    deadlineTimer = setTimeout(() => finish('timeout'), Math.max(900, maxDurationMs - fadeMs));
     readyTimer = setInterval(() => {
-      if (performance.now() - startedAt >= holdMs && hostReady()) finish('ready');
+      if (performance.now() - startedAt >= holdMs && handoffReady()) finish('ready');
     }, 80);
   }
 

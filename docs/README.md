@@ -2,14 +2,14 @@
 
 BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换肤：选一张图片或一段视频，应用为 ZCode 的背景与配色，随时暂停、恢复原貌。所有主题与素材只保存在本机，不联网、不上传。
 
-当前版本：**1.1.1** · 发布者：钧天造物（Juntian Works）
+当前版本：**0.1.4** · 发布者：钧天造物（Juntian Works）
 
 ## 功能
 
 - 41 个随包壁纸主题（图片、视频，取自 Codex Dream Skin 预设库）
 - 导入图片或视频，自动生成缩略图、探测媒体信息并按需压缩
 - 应用 / 暂停 / 继续 / 重置 / 恢复原貌
-- `.bbskin` 主题包导入与导出（ZIP：`pack.json` + `theme.json` + 媒体）
+- `.bbskin` 主题包导入与导出（ZIP：`pack.json` + `theme.json` + 媒体）；「下载素材」按原格式导出主题素材，导出目标需带 `.bbskin` / `.json` 或素材扩展名
 - 主题保存、删除、重命名（我的主题）；重启后保留选中主题、运行态与窗口位置
 - 可选关闭时最小化到系统托盘，皮肤继续运行；从托盘菜单退出
 - 宿主切深色 / 浅色时皮肤自己跟上，不需要重新应用
@@ -37,7 +37,7 @@ BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换�
 
 ## 安装
 
-运行 `BackdropBuddy-Setup-1.1.1.exe`：
+运行 `BackdropBuddy-Setup-0.1.4.exe`：
 
 - **per-user 安装，不需要管理员权限**
 - 默认目录：`%LOCALAPPDATA%\Programs\BackdropBuddy`
@@ -47,7 +47,7 @@ BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换�
 静默安装：
 
 ```bat
-BackdropBuddy-Setup-1.1.1.exe /VERYSILENT /CURRENTUSER /NORESTART
+BackdropBuddy-Setup-0.1.4.exe /VERYSILENT /CURRENTUSER /NORESTART
 ```
 
 卸载：Windows 设置 → 应用 → BackdropBuddy。**默认保留用户主题与设置**；卸载向导会询问是否一并删除，静默卸载可加 `/PURGEDATA=1` 强制清除。
@@ -91,7 +91,7 @@ BackdropBuddy 通过 Chrome DevTools Protocol（CDP，默认端口 9229）连接
 使用边界与素材建议：
 
 - 启动背景优先使用主题缩略图，其次使用主题静图；没有合适静图时使用深色渐变。启动素材仅接受主题目录内的 JPEG / PNG / WebP，且不得超过 500 KiB；不会把主题中的 HTML 或 JavaScript 当作启动动画执行。
-- 显示满 900 毫秒后可用「跳过」按钮或 Esc 提前交还宿主；正常交接取决于宿主就绪与最短停留时间，未就绪时最迟约 3.5 秒交还。
+- 显示满 900 毫秒后可用「跳过」按钮或 Esc 提前交还宿主；正常交接取决于宿主就绪、正文挂载与最短停留时间，未就绪或正文未挂载时最长约 20 秒交还。
 - 启动动画只对已保存并选中的自己的主题生效，且仅在**下次由 BackdropBuddy 启动宿主**时触发；直接双击宿主图标不会触发，也不会改变 BackdropBuddy 自身的 Splash。
 - 注入失败会回退到宿主默认启动画面，不影响宿主或现有皮肤；该链路不修改宿主安装文件。真实验收目前仅覆盖 ZCode。
 
@@ -146,11 +146,15 @@ powershell -ExecutionPolicy Bypass -File build\build.ps1
 powershell -ExecutionPolicy Bypass -File build\package.ps1
 ```
 
-产物在 `build\out\`：
+产物默认落在 `build\out\`；发布版按 `docs\PLAN.md` 的约定出到 `build\out-next\`：
 
-- `BackdropBuddy-1.1.1\`：可直接运行的完整目录
-- `BackdropBuddy-1.1.1.zip`：便携包
-- `BackdropBuddy-Setup-1.1.1.exe`：per-user 安装包
+```powershell
+powershell -ExecutionPolicy Bypass -File build\package.ps1 -OutputRoot build\out-next
+```
+
+- `BackdropBuddy-0.1.4\`：可直接运行的完整目录
+- `BackdropBuddy-0.1.4.zip`：便携包
+- `BackdropBuddy-Setup-0.1.4.exe`：per-user 安装包
 - `manifest.json`、`SHA256SUMS.txt`、`build.json`
 
 ## 已知限制

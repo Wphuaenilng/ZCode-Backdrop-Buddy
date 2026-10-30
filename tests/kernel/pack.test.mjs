@@ -88,6 +88,42 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
   assert.equal(exported.data.format, 'bbskin');
   assert.ok(exported.data.bytes > 1000);
 
+  const mediaTarget = path.join(dataDir, 'exports', 'sakura-dawn.jpg');
+  const mediaExport = await call(METHODS.THEME_EXPORT, { themeId: source.id, destPath: mediaTarget });
+  assert.equal(mediaExport.ok, true);
+  assert.equal(mediaExport.data.format, 'media');
+  assert.equal(mediaExport.data.file, source.media.file);
+  assert.deepEqual(
+    fs.readFileSync(mediaTarget),
+    fs.readFileSync(path.join(dataDir, 'themes', 'user', source.id, source.media.file))
+  );
+
+  const wrongExtension = await call(METHODS.THEME_EXPORT, {
+    themeId: source.id,
+    destPath: path.join(dataDir, 'exports', 'sakura-dawn.png')
+  });
+  assert.equal(wrongExtension.ok, false);
+  assert.equal(wrongExtension.error.code, 'BAD_PARAMS');
+
+  const zipTarget = path.join(dataDir, 'exports', 'sakura-dawn.zip');
+  const zipExport = await call(METHODS.THEME_EXPORT, { themeId: source.id, destPath: zipTarget });
+  assert.equal(zipExport.ok, true);
+  assert.equal(zipExport.data.format, 'bbskin');
+
+  const jsonTarget = path.join(dataDir, 'exports', 'sakura-dawn.json');
+  const jsonExport = await call(METHODS.THEME_EXPORT, { themeId: source.id, destPath: jsonTarget });
+  assert.equal(jsonExport.ok, true);
+  assert.equal(jsonExport.data.format, 'json');
+
+  // 未知或空扩展名不得静默降级成 JSON：素材导出会写出一个没人要的文件。
+  for (const name of ['sakura-no-extension', 'sakura-notes.txt']) {
+    const target = path.join(dataDir, 'exports', name);
+    const rejected = await call(METHODS.THEME_EXPORT, { themeId: source.id, destPath: target });
+    assert.equal(rejected.ok, false, name);
+    assert.equal(rejected.error.code, 'BAD_PARAMS', name);
+    assert.equal(fs.existsSync(target), false, `${name} must not be created`);
+  }
+
   const imported = await call(METHODS.THEME_IMPORT, { path: packPath });
   assert.equal(imported.ok, true);
   const copy = imported.data.theme;
@@ -119,6 +155,12 @@ test('packs: local assets seed, bbskin round trip and restart persistence', asyn
 
     const saved = await call2(METHODS.THEME_SAVE, { name: '参数主题', tags: ['艺术'], params: { accent: '#445566' } });
     assert.equal(saved.ok, true);
+    const noMediaExport = await call2(METHODS.THEME_EXPORT, {
+      themeId: saved.data.theme.id,
+      destPath: path.join(dataDir, 'exports', 'no-media.jpg')
+    });
+    assert.equal(noMediaExport.ok, false);
+    assert.equal(noMediaExport.error.code, 'MEDIA_INVALID');
     const pack2 = path.join(dataDir, 'exports', 'saved.bbskin');
     const savedExport = await call2(METHODS.THEME_EXPORT, { themeId: saved.data.theme.id, destPath: pack2 });
     assert.equal(savedExport.ok, true);

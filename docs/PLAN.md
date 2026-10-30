@@ -5,9 +5,9 @@
 > | 项 | 值 |
 > | --- | --- |
 > | 计划版本 | v3.0 |
-> | 状态 | V1.1 已交付（P0–P7 已验收；版本 1.1.0） |
+> | 状态 | 未发布正式版，版本号自 **0.1.4** 起改用 0.x 前缀（P0–P7 已验收；下文与 `docs/issue-*.md` 里出现的 1.0.0 / 1.1.x 是当时的里程碑编号，不回改） |
 > | 当前 demo | `app/backdrop-lab.html`（三页 UI，15/15 交互验收） |
-> | 原生 UI | `ui/`（React 18.3.1 + Vite 单文件 256 KB） |
+> | 原生 UI | `ui/`（React 18.3.1 + Vite 单文件，门禁 288 KiB） |
 > | 参照项目 | `F:\shop\CodexDreamSkinManager`（105 KB .NET 壳、React UI、Node 内核、30 个 PowerShell 脚本） |
 > | 宿主 | ZCode（Electron；只读识别 + CDP 注入，不改宿主文件） |
 > | 事实源 | 本文档。`index.html` 是阅读版；改动先改本文 |

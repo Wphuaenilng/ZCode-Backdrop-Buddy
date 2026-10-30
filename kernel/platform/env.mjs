@@ -42,5 +42,6 @@ export function resolveProductVersion(appRoot, env = process.env) {
     } catch { /* try the next candidate */ }
   }
 
-  return '1.0.0';
+  // 读不到 VERSION 也读不到 build/version.json 时，宁可报"未知"也不要编一个看似合理的版本号。
+  return '0.0.0-unknown';
 }

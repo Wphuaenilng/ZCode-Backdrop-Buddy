@@ -33,7 +33,7 @@ const csp = [
   "base-uri 'none'",
   "form-action 'none'",
   "object-src 'none'",
-  "frame-src blob:",
+  "frame-src https://preview.backdropbuddy.invalid",
   "frame-ancestors 'none'"
 ].join('; ');
 

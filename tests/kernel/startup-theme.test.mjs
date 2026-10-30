@@ -67,6 +67,11 @@ test('startup theme: persistence, safe media, bbskin round trip and controlled p
   assert.equal(preview.data.config.mediaUrl, null);
   assert.doesNotMatch(preview.data.html, /<\/script><script>alert/);
   assert.match(preview.data.html, /connect-src 'none'/);
+  assert.match(preview.data.url, /^https:\/\/preview\.backdropbuddy\.invalid\/startup-preview\.html\?v=\d+$/);
+  assert.equal(
+    fs.readFileSync(path.join(dataDir, 'cache', 'preview', 'startup-preview.html'), 'utf8'),
+    preview.data.html
+  );
 
   for (const startup of [
     { enabled: true, preset: 'remote-code', holdMs: 900, media: null },

@@ -93,6 +93,7 @@ test('startup template: sanitizes preset data and never accepts remote code or m
   });
   assert.equal(normalized.preset, 'zcode-pop');
   assert.equal(normalized.holdMs, 3000);
+  assert.equal(normalized.maxDurationMs, 20000);
   assert.equal(normalized.themeName.length, 24);
   assert.equal(normalized.accent, '#6f9275');
   assert.equal(normalized.mediaUrl, null);
@@ -103,7 +104,7 @@ test('startup template: sanitizes preset data and never accepts remote code or m
   assert.match(source, /sessionStorage/);
   assert.match(source, /#loading\{opacity:0!important\}/);
   assert.match(source, /-webkit-app-region:drag/);
-  assert.match(source, /3500 - fadeMs/);
+  assert.match(source, /maxDurationMs - fadeMs/);
   assert.doesNotMatch(source, /https?:\/\/evil/);
 
   const html = createStartupPreviewHtml({ mediaUrl: 'https://media.backdropbuddy.invalid/user/demo/thumb.jpg' });

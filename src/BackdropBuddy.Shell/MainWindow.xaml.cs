@@ -738,14 +738,15 @@ namespace BackdropBuddy.Shell
         private Dictionary<string, object> PickSave(string kind, string suggestedName)
         {
             string safeName = SanitizeFileName(suggestedName);
+            bool media = string.Equals(kind, "media", StringComparison.Ordinal);
             var dialog = new SaveFileDialog
             {
-                Title = "导出主题包",
+                Title = media ? "下载素材" : "导出主题包",
                 AddExtension = true,
                 OverwritePrompt = true,
                 Filter = FilterFor(kind),
-                DefaultExt = string.Equals(kind, "pack", StringComparison.Ordinal) ? ".bbskin" : string.Empty,
-                FileName = safeName.Length == 0 ? "theme.bbskin" : safeName,
+                DefaultExt = DefaultExtension(kind, safeName),
+                FileName = safeName.Length == 0 ? (media ? "theme" : "theme.bbskin") : safeName,
                 InitialDirectory = AppPaths.ExportsRoot
             };
 
@@ -785,6 +786,17 @@ namespace BackdropBuddy.Shell
                 default:
                     return "所有文件|*.*";
             }
+        }
+
+        // SaveFileDialog 的 AddExtension 只在 DefaultExt 非空时补全；素材可能是
+        // jpg 也可能是 mp4，所以从建议文件名已带的扩展名推导，不写死格式。
+        private static string DefaultExtension(string kind, string safeName)
+        {
+            if (string.Equals(kind, "pack", StringComparison.Ordinal)) return ".bbskin";
+            if (!string.Equals(kind, "media", StringComparison.Ordinal)) return string.Empty;
+
+            string extension = Path.GetExtension(safeName);
+            return extension.Length > 1 ? extension : string.Empty;
         }
 
         private static string CreatePreview(string source)

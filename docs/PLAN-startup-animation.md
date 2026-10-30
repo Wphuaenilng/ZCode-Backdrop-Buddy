@@ -14,12 +14,13 @@
 ### 0.1 已实现内容
 
 - `kernel/host/startup-injector.mjs` 在宿主页面脚本执行前挂接浏览器级 CDP，使用 `Target.setAutoAttach(waitForDebuggerOnStart)` 与 `Page.addScriptToEvaluateOnNewDocument`，并及时恢复页面；800ms watchdog 与断连恢复用于避免暂停目标后卡死。
-- `kernel/host/startup-template.mjs` 提供固定模板：`zcode-pop` 与 `theme-reveal` 两种预设、主题静图背景、900–3000ms 最短停留、900ms 跳过保护、约 3.5 秒硬截止、reduced-motion 静态效果与单次显示守卫。`#loading` 只设为透明，不删除、不接管宿主状态机。
+- `kernel/host/startup-template.mjs` 提供固定模板：`zcode-pop` 与 `theme-reveal` 两种预设、主题静图背景、900–3000ms 最短停留、900ms 跳过保护、宿主未就绪时最长约 20 秒硬截止、reduced-motion 静态效果与单次显示守卫。`#loading` 只设为透明，不删除、不接管宿主状态机；正常交还前等待宿主移除 `#loading`（最多再等 600ms）并等 `#root` 出现正文内容，避免露出原生启动动画与 React 启动占位页。
+- 预览 HTML 由内核写入 `cache/preview/startup-preview.html`，经 `preview.backdropbuddy.invalid` 加载；不使用 `blob:`，因为 blob 文档会继承主界面 CSP 的 `script-src` hash，预览脚本会被拦截。
 - 主题记录的 `startup` 模型包含 `enabled / preset / holdMs / media`；仅自己的主题可编辑，旧主题与旧 `.bbskin` 默认关闭，主题包导入导出保留启动配置。素材只接受主题目录内的 JPEG / PNG / WebP，最大 500 KiB，并校验文件内容与路径边界。
 - 设置入口为 **设置 → 主题参数 → 宿主启动动画**；保存后可打开 sandbox iframe 预览。**设置 → 应用偏好 → 启动宿主**用于确认启动或重启。
 - `kernel/host/adapter.mjs` 与 `platform/windows/host/restart.ps1` 负责临时配置、启动前注入和结果回收；只对 BackdropBuddy 新启动的宿主生效，直接双击不触发。注入失败回退默认启动画面，不影响换肤。
 - BackdropBuddy 自身 Splash 保持独立品牌链路，不播放宿主主题启动动画。
-- 自动化测试共 144 项：使用复制到隔离目录的本机 `ffmpeg` / `ffprobe` 9.0.2 后，144 通过、0 跳过、0 失败；媒体工具不随发布包分发。UI 构建与产物级 JSDOM 冒烟通过。
+- 自动化测试共 151 项：最新一轮 151 通过、0 跳过、0 失败；媒体工具不随发布包分发。UI 构建与产物级 JSDOM 冒烟通过。
 
 ### 0.2 本轮实测结果
 
@@ -65,7 +66,7 @@
 - 当前只有一台物理显示器，多显示器尚未实测；原生 OS 键鼠输入尚未实测，既有输入验证使用 CDP 或 DOM。
 - 真实启动动画验收仅覆盖 ZCode 主渲染器；多宿主和其他窗口类型仍需分别做真实验收。
 - `file:` 图片的 Network 事件在本机 Chromium 上不稳定；图片证据采用实际计算后的背景 URL 与截图，不宣称整个宿主启动期网络请求为 0。
-- 真实 3.5 秒硬截止尚未通过拖延真实宿主 ready 来触发；目前由 JSDOM 生命周期测试覆盖。
+- 真实 20 秒硬截止尚未通过拖延真实宿主 ready 来触发；目前由 JSDOM 生命周期测试以 3.5s 配置覆盖提前触发路径。
 
 ### 0.4 证据位置
 
@@ -213,7 +214,7 @@
 | 0ms | 页面恢复，注入层立即出现，`#loading` 透明 |
 | 0–900ms | 背景淡入 + logo 动效 + 光扫 |
 | ≥900ms 且宿主 ready | 180ms 淡出并移除 |
-| 动画结束但宿主未 ready | 停在完成帧，轻微呼吸，最长 3.5s |
+| 动画结束但宿主未 ready | 停在完成帧，轻微呼吸，最长 20s |
 | 用户点击/按键 | 900ms 后允许立即跳过 |
 | `prefers-reduced-motion` | 静态背景 + 150ms 淡入淡出 |
 
@@ -274,7 +275,7 @@ P3-5 回归补充：验收发现 `Target.setAutoAttach` 与现存目标挂接可
 | 端口开放到 attach | ≤300ms | 中位数 327.5ms、范围 223–1075ms，**未达到该时延目标** |
 | 启动层首帧 | 早于 ZCode 默认 logo 绘制 | 20 轮前三帧均为测试层，且样式安装早于首帧采样；通过本轮截图验收，不外推为绝对零闪屏 |
 | 宿主卡死次数 | 0 | spike 与生产强杀场景均恢复，未观察到卡死 |
-| 启动层总时长 | 默认 0.9–1.2s；未就绪时最长 3.5s | 真实跳过约 1271ms；3000ms 配置下真实 ready 交还约 3149ms；硬截止由 JSDOM 验证为 3300–3600ms 内移除 |
+| 启动层总时长 | 默认 0.9–1.2s；未就绪时最长 20s | 真实跳过约 1271ms；3000ms 配置下真实 ready 交还约 3149ms；硬截止由 JSDOM 以 3.5s 配置验证为 3300–3600ms 内移除 |
 | 宿主文件改动 | 0 | 本轮真实前后哈希比对覆盖清单全部 1429 项，变化 / 缺失 / 新增均为 0，清单自身未变；通过本轮范围验收 |
 | 启动期网络请求 | 0 | 固定模板无网络依赖；`file:` 事件不稳定，未证明整个宿主启动期请求为 0 |
 | 启动图体积 | ≤500KB（建议 1920px JPEG/缩略图） | 实现硬上限 500 KiB，并校验路径、扩展名与文件头；自动化通过 |
@@ -290,7 +291,7 @@ P3-5 回归补充：验收发现 `Target.setAutoAttach` 与现存目标挂接可
 | `file://` 图片在 document_start 不可用 | 低/中 | 现有主题 CSS 已用 file URL；P0 一并验证，失败改用缩略图 data URL |
 | ZCode 更新改启动 DOM/URL | 中/中 | 选择器容错、版本门禁、失败降级；启动层独立于 `#loading` |
 | 主题包成为任意代码入口 | 低/高 | 只接受枚举/颜色/时长/本地图片；固定模板；复用 CSS 白名单 |
-| 启动层被误认为卡死 | 低/中 | 完成帧呼吸、输入可跳过、3.5s 上限 |
+| 启动层被误认为卡死 | 低/中 | 完成帧呼吸、输入可跳过、20s 上限 |
 | 直接双击 ZCode 不生效 | 高/产品边界 | UI 明示；提供「用 BackdropBuddy 启动」入口；不承诺全路径 |
 
 ---

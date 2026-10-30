@@ -575,12 +575,37 @@ export function createLibrary({ paths, logger, media, locks }) {
     });
   }
 
+  async function exportMedia(record, target, extension) {
+    if (!record.media || !record.media.file) throw new AppError('MEDIA_INVALID', 'theme has no media to export');
+    const source = path.join(themeDir(record), record.media.file);
+    if (!fs.existsSync(source)) throw new AppError('MEDIA_INVALID', `theme media is missing: ${source}`);
+
+    const mediaExtension = path.extname(record.media.file).toLowerCase();
+    const compatible = mediaExtension === extension
+      || (mediaExtension === '.jpg' && extension === '.jpeg')
+      || (mediaExtension === '.jpeg' && extension === '.jpg');
+    if (!compatible) {
+      throw new AppError('BAD_PARAMS', `theme media is ${mediaExtension.slice(1)}; save it as ${mediaExtension}`);
+    }
+
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    await fs.promises.copyFile(source, target);
+    const bytes = (await fs.promises.stat(target)).size;
+    logger?.info('theme media exported', { themeId: record.id, target, bytes, file: record.media.file });
+    return { path: target, bytes, format: 'media', kind: record.media.kind, file: record.media.file };
+  }
+
   async function exportTheme(id, destPath) {
     const record = findRecord(id);
     if (!record) throw new AppError('THEME_NOT_FOUND', `theme not found: ${id}`);
 
     const target = path.resolve(destPath);
-    if (target.toLowerCase().endsWith('.bbskin')) return exportPack(record, target);
+    const extension = path.extname(target).toLowerCase();
+    if (extension === '.bbskin' || extension === '.zip') return exportPack(record, target);
+    if (MEDIA_EXTENSIONS.has(extension)) return exportMedia(record, target, extension);
+    if (extension !== '.json') {
+      throw new AppError('BAD_PARAMS', `unsupported export extension${extension ? `: ${extension}` : ''}; use .bbskin, .json or a media extension`);
+    }
 
     fs.mkdirSync(path.dirname(target), { recursive: true });
     const pack = {
@@ -622,7 +647,16 @@ export function createLibrary({ paths, logger, media, locks }) {
       reducedMotion,
       preview: true
     });
-    return { html: createStartupPreviewHtml(config), config };
+    const html = createStartupPreviewHtml(config);
+    const fileName = 'startup-preview.html';
+    writeFileAtomic(path.join(paths.cache, 'preview', fileName), html);
+    // Served from the preview virtual host: a blob document would inherit the
+    // manager page's script-src hash policy and never execute this preview.
+    return {
+      html,
+      config,
+      url: `https://preview.backdropbuddy.invalid/${fileName}?v=${Date.now()}`
+    };
   }
 
   function pointerInfo() {

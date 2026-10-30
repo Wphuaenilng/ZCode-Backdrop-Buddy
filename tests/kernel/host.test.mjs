@@ -26,9 +26,11 @@ const TOKENS = {
   header: 'rgba(255,255,255,0.27)',
   card: 'rgba(255,255,255,0.55)',
   popover: 'rgba(255,255,255,0.96)',
+  popoverGlass: 'rgba(255,255,255,0.68)',
   input: 'rgba(255,255,255,0.40)',
   surface: 'rgba(255,255,255,0.18)',
   surfaceHover: 'rgba(255,255,255,0.25)',
+  hoverWash: 'rgba(111,146,117,0.16)',
   selected: 'rgba(111,146,117,0.18)',
   accentSoft: 'rgba(111,146,117,0.14)',
   terminal: 'rgba(255,255,255,1.00)',
@@ -247,6 +249,34 @@ test('host css: dual-mode blocks carry separate surfaces and foreground tokens',
   assert.match(css, /text-shadow: var\(--bb-text-shadow\)/);
 });
 
+test('host css: hover uses the accent wash and popovers stay translucent', () => {
+  const build = (tokens) => buildThemeCss({
+    params: normalizeThemeParams({ accent: '#6F9275', panel: 30 }),
+    media: { kind: 'image', url: 'file:///C:/data/media.jpg' },
+    tokens,
+    mode: 'light'
+  });
+
+  const css = build(TOKENS);
+  assert.match(css, /--color-surface-hover: rgba\(111,146,117,0\.16\) !important/);
+  assert.match(css, /--color-hover: rgba\(111,146,117,0\.16\) !important/);
+  assert.match(css, /--color-popover: rgba\(255,255,255,0\.68\) !important/);
+  assert.match(css, /--color-popover-header: rgba\(255,255,255,0\.68\) !important/);
+  assert.match(css, /--color-menu: rgba\(255,255,255,0\.68\) !important/);
+  assert.match(css, /--color-menu-hover: rgba\(111,146,117,0\.16\) !important/);
+  assert.match(css, /--color-tooltip: rgba\(255,255,255,0\.96\) !important/);
+  assert.match(css, /\[class~="bg-popover"\], \[class~="bg-popover\/95"\], \[class~="bg-popover\/98"\] \{ backdrop-filter: blur\(18px\) saturate\(1\.08\); \}/);
+  assert.match(css, /\[class~="bg-menu"\] \{ position: relative; \}/);
+  assert.match(css, /\[class~="bg-menu"\]::before \{ content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; backdrop-filter: blur\(18px\) saturate\(1\.08\); pointer-events: none; \}/);
+  assert.doesNotMatch(css, /\[class~="bg-menu"\] \{ backdrop-filter/);
+  assert.match(css, /\[class~="group\/switch"\] \{ --color-primary-foreground: #ffffff !important; \}/);
+
+  const legacy = build({ ...TOKENS, hoverWash: undefined, popoverGlass: undefined });
+  assert.match(legacy, /--color-surface-hover: rgba\(255,255,255,0\.25\) !important/);
+  assert.match(legacy, /--color-menu-hover: rgba\(255,255,255,0\.25\) !important/);
+  assert.match(legacy, /--color-popover: rgba\(255,255,255,0\.96\) !important/);
+});
+
 test('host css: backdrop blur follows the task preset', () => {
   const build = (task) => buildThemeCss({
     params: normalizeThemeParams({ task }),
@@ -280,12 +310,12 @@ test('host css: safe overlay guards the left rail and can be disabled', () => {
   assert.ok(build('right').includes('linear-gradient(270deg, rgba(255,255,255,0.10) 0px'));
 });
 
-test('host platform: luminance raises panel alpha on bright wallpapers', async () => {
-  const run = (values) => runPowerShellJson('theme/color.ps1', {
+test('host platform: dark panel follows the slider while local contrast guards remain', async () => {
+  const run = (values, panel = '30') => runPowerShellJson('theme/color.ps1', {
     appRoot: ROOT,
     args: [
       '-Mode', 'dark',
-      '-Panel', '30',
+      '-Panel', panel,
       '-Bubble', '0',
       '-Mean', values.mean,
       '-Center', values.center,
@@ -297,23 +327,40 @@ test('host platform: luminance raises panel alpha on bright wallpapers', async (
       '-Highlight', values.highlight
     ]
   });
-  const dim = await run({ mean: '0.18', center: '0.2', p15: '0.05', p75: '0.28', p85: '0.32', p90: '0.34', p99: '0.4', highlight: '0.01' });
-  const bright = await run({ mean: '0.92', center: '0.94', p15: '0.9', p75: '0.97', p85: '0.98', p90: '0.99', p99: '1', highlight: '0.7' });
+  const dimValues = { mean: '0.18', center: '0.2', p15: '0.05', p75: '0.28', p85: '0.32', p90: '0.34', p99: '0.4', highlight: '0.01' };
+  const brightValues = { mean: '0.92', center: '0.94', p15: '0.9', p75: '0.97', p85: '0.98', p90: '0.99', p99: '1', highlight: '0.7' };
+  const dim = await run(dimValues);
+  const bright = await run(brightValues);
 
   assert.equal(dim.ok, true);
-  assert.ok(bright.luminance.darkPanel > dim.luminance.darkPanel);
+  assert.equal(bright.ok, true);
+  assert.equal(dim.dark.panel, 'rgba(18,18,20,0.30)');
+  assert.equal(bright.dark.panel, dim.dark.panel);
+  assert.equal(dim.luminance.darkDim, 0.03);
+  assert.ok(Math.abs(bright.luminance.darkDim - bright.luminance.darkA * 0.20) < 0.0001);
   assert.ok(bright.luminance.darkDim > dim.luminance.darkDim);
-  assert.match(bright.panel, /^rgba\(18,18,20,0\./);
-  assert.match(bright.dark.panel, /^rgba\(18,18,20,0\./);
+  assert.ok(bright.luminance.darkDim <= 0.18);
   assert.match(bright.light.panel, /^rgba\(255,255,255,0\./);
   assert.ok(bright.light.panel !== bright.dark.panel);
   assert.match(bright.dark.foregroundSubtlest, /0\.70/);
   assert.match(bright.light.foregroundSubtlest, /0\.68/);
-  assert.ok(dim.luminance.darkDim >= 0.06);
   const scrimAlpha = (value) => Number(value.match(/,(0\.\d+)\)$/)[1]);
   assert.ok(scrimAlpha(bright.dark.scrim) >= 0.30);
   assert.ok(scrimAlpha(bright.light.scrim) >= 0.26);
   assert.ok(scrimAlpha(bright.dark.scrim) >= scrimAlpha(dim.dark.scrim));
+
+  const zero = await run(dimValues, '0');
+  assert.equal(zero.dark.panel, 'rgba(18,18,20,0.10)');
+  assert.equal(zero.dark.sidebar, 'rgba(18,18,20,0.30)');
+  assert.equal(zero.dark.header, 'rgba(18,18,20,0.28)');
+  assert.equal(zero.dark.card, 'rgba(18,18,20,0.35)');
+  assert.equal(zero.dark.input, 'rgba(18,18,20,0.88)');
+  assert.equal(zero.dark.popover, 'rgba(18,18,20,0.97)');
+  assert.equal(zero.dark.popoverGlass, 'rgba(18,18,20,0.77)');
+
+  const high = await run(dimValues, '100');
+  assert.equal(high.dark.panel, 'rgba(18,18,20,0.92)');
+  assert.equal(high.light.panel, 'rgba(255,255,255,0.92)');
 });
 
 test('host platform: luminance analysis returns a 4x3 grid', async () => {

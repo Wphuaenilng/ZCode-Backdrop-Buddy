@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-BackdropBuddy 1.1.1 bundles or embeds the following third-party components.
+BackdropBuddy 0.1.4 bundles or embeds the following third-party components.
 Full license texts are shipped in the `licenses/` directory and, for source
 components, in the referenced packages.
 
@@ -62,7 +62,7 @@ embedded in `ui/dist/index.html` only to the extent emitted by the bundler.
 
 - Copyright (C) 1997-2026 Jordan Russell; portions Copyright (C) 2000-2026
   Martijn Laan.
-- Inno Setup is free software used to produce `BackdropBuddy-Setup-1.1.1.exe`.
+- Inno Setup is free software used to produce `BackdropBuddy-Setup-0.1.4.exe`.
 - License information: https://jrsoftware.org/islicense.php
 - Inno Setup itself is not redistributed as a standalone product.
 

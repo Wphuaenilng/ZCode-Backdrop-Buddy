@@ -35,7 +35,6 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
   const [startup, setStartup] = useState(() => ({ ...DEFAULT_STARTUP, ...theme?.startup }));
   const [activeTab, setActiveTab] = useState('theme');
   const [previewing, setPreviewing] = useState(false);
-  const [preview, setPreview] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [previewError, setPreviewError] = useState('');
@@ -60,23 +59,15 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
   useEffect(() => {
     if (!previewing || !native) return undefined;
     let alive = true;
-    setPreview(null);
     setPreviewUrl(null);
     setPreviewError('');
     bridge.request('theme.startup.preview', { themeId }).then((result) => {
       if (!alive) return;
-      if (result.ok) setPreview(result.data);
+      if (result.ok) setPreviewUrl(result.data?.url || null);
       else setPreviewError(result.error?.message || result.error?.code || '预览生成失败');
     });
     return () => { alive = false; };
   }, [previewing, previewKey, themeId, native, bridge]);
-
-  useEffect(() => {
-    if (!previewing || !preview?.html) return undefined;
-    const url = URL.createObjectURL(new Blob([preview.html], { type: 'text/html' }));
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [previewing, preview]);
 
   const patch = (value) => setForm((current) => ({ ...current, ...value }));
   const patchStartup = (value) => setStartup((current) => ({ ...current, ...value }));
@@ -258,7 +249,7 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
                 <div className="startup-actions">
                   <button type="button" className="btn light" disabled={!native} onClick={() => { setPreviewKey((value) => value + 1); setPreviewing(true); }} data-testid="preview-theme-startup">预览已保存效果</button>
                 </div>
-                <p className="note">主题缩略图会用作背景；没有合适静图时使用深色渐变。预览与宿主使用同一模板，修改后先保存再预览。900ms 后可跳过，最迟约 3.5 秒交还宿主。</p>
+                <p className="note">主题缩略图会用作背景；没有合适静图时使用深色渐变。预览与宿主使用同一模板，修改后先保存再预览。900ms 后可跳过；宿主未就绪或正文未挂载时最长约 20 秒交还。</p>
                 {theme?.builtin ? <p className="note">内置主题的启动配置为只读；可在自己的主题上启用。</p> : null}
               </section>
 

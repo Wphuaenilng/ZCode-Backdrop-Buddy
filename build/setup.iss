@@ -1,10 +1,6 @@
 ﻿#define MyAppName "BackdropBuddy"
-#ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
-#endif
-#ifndef SourceDir
-  #define SourceDir "..\out\BackdropBuddy-1.0.0"
-#endif
+; 版本与源目录必须由 build/package.ps1 通过 -DMyAppVersion= / -DSourceDir= 传入。
+; 这里刻意不设默认值：宁可 ISCC 报未定义标识符失败，也不要静默产出错误版本的安装包。
 #define MyAppPublisher "Juntian Works"
 #define MyAppExeName "BackdropBuddy.exe"
 #define WebView2ClientGuid "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"

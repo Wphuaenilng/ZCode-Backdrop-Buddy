@@ -48,8 +48,13 @@ function New-Tokens([string]$TokenMode, [double]$DimAlpha, [double]$ScrimAlpha, 
   $cardAlpha = Clamp ($PanelAlpha + 0.14 + $BubbleValue * 0.10) $cardFloor $cardCap
   $inputAlpha = Clamp ($PanelAlpha + 0.18 + $BubbleValue * 0.10) $inputFloor $inputCap
   $popoverAlpha = $(if ($isDark) { 0.97 } else { 0.98 })
+  # 下拉/菜单是浮层，给壁纸留出透视；比卡片更实（要压住底下的高频细节），
+  # 但不再接近全不透明，配合宿主侧的 backdrop-filter 读字
+  $popoverGlassAlpha = $(if ($isDark) { Clamp (0.76 + $PanelAlpha * 0.14) 0.76 0.90 } else { Clamp (0.62 + $PanelAlpha * 0.20) 0.62 0.84 })
   $surfaceAlpha = Clamp (0.10 + $PanelAlpha * 0.30) 0.10 0.55
   $surfaceHoverAlpha = Clamp (0.16 + $PanelAlpha * 0.34) 0.16 0.65
+  # hover 用选中色的浅一档：选中是 accent 0.22，hover 比它淡但仍能一眼看出来
+  $hoverWashAlpha = $(if ($isDark) { 0.18 } else { 0.16 })
 
   $foreground = $(if ($isDark) { '#e8e8ea' } else { '#1c1c1e' })
   $foregroundSubtle = $(if ($isDark) { 'rgba(232,232,234,0.78)' } else { 'rgba(28,28,30,0.72)' })
@@ -66,9 +71,11 @@ function New-Tokens([string]$TokenMode, [double]$DimAlpha, [double]$ScrimAlpha, 
     header = (New-Rgba $r $g $b $headerAlpha)
     card = (New-Rgba $r $g $b $cardAlpha)
     popover = (New-Rgba $r $g $b $popoverAlpha)
+    popoverGlass = (New-Rgba $r $g $b $popoverGlassAlpha)
     input = (New-Rgba $r $g $b $inputAlpha)
     surface = (New-Rgba $r $g $b $surfaceAlpha)
     surfaceHover = (New-Rgba $r $g $b $surfaceHoverAlpha)
+    hoverWash = (New-Rgba $AccentR8 $AccentG8 $AccentB8 $hoverWashAlpha)
     selected = (New-Rgba $AccentR8 $AccentG8 $AccentB8 0.22)
     accentSoft = (New-Rgba $AccentR8 $AccentG8 $AccentB8 0.16)
     terminal = (New-Rgba $r $g $b 1.0)
@@ -106,9 +113,9 @@ try {
   $peak = $P90 * 255
   $darkA = $(if ($peak -le $targetDark) { 0.10 } else { ($peak - $targetDark) / ($peak - 18) })
   $darkA = Clamp $darkA 0.10 0.74
-  $darkDim = Clamp ($darkA * 0.35) 0.06 0.30
-  # 侧栏已有独立 scrim、卡片/输入框有各自保底，panel 下限只兜底滑块极低值的滥用
-  $darkPanel = Clamp ([Math]::Max((($darkA - $darkDim) / (1 - $darkDim)), $panelValue)) 0.10 0.92
+  $darkDim = Clamp ($darkA * 0.20) 0.03 0.18
+  # 深色面板尊重滑块；侧栏 scrim、卡片/输入框保底与文字投影负责局部可读性
+  $darkPanel = Clamp $panelValue 0.10 0.92
 
   $shadow = $P15 * 255
   $lightA = $(if ($shadow -ge $targetLight) { 0.06 } else { ($targetLight - $shadow) / (255 - $shadow) })

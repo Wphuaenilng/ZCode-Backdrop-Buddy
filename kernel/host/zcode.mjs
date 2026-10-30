@@ -156,6 +156,8 @@ function fallbackGradient(params, mode) {
 }
 
 function colorVars(t) {
+  const hoverWash = t.hoverWash || t.surfaceHover;
+  const popoverGlass = t.popoverGlass || t.popover;
   return [
     `  --color-background: ${t.panel} !important;`,
     `  --color-background-alt: ${t.panel} !important;`,
@@ -165,8 +167,8 @@ function colorVars(t) {
     `  --color-card: ${t.card} !important;`,
     `  --color-card-border: ${t.cardBorder} !important;`,
     `  --color-card-selected: ${t.selected} !important;`,
-    `  --color-popover: ${t.popover} !important;`,
-    `  --color-popover-header: ${t.popover} !important;`,
+    `  --color-popover: ${popoverGlass} !important;`,
+    `  --color-popover-header: ${popoverGlass} !important;`,
     `  --color-popover-border: ${t.popoverBorder} !important;`,
     `  --color-popover-foreground: ${t.popoverForeground} !important;`,
     `  --color-input: ${t.input} !important;`,
@@ -174,11 +176,11 @@ function colorVars(t) {
     `  --color-input-border: ${t.inputBorder} !important;`,
     `  --color-tab: ${t.sidebar} !important;`,
     `  --color-tab-active: ${t.card} !important;`,
-    `  --color-menu: ${t.popover} !important;`,
-    `  --color-menu-hover: ${t.panel} !important;`,
+    `  --color-menu: ${popoverGlass} !important;`,
+    `  --color-menu-hover: ${hoverWash} !important;`,
     `  --color-surface: ${t.surface} !important;`,
-    `  --color-surface-hover: ${t.surfaceHover} !important;`,
-    `  --color-hover: ${t.surfaceHover} !important;`,
+    `  --color-surface-hover: ${hoverWash} !important;`,
+    `  --color-hover: ${hoverWash} !important;`,
     `  --color-selected: ${t.selected} !important;`,
     `  --color-accent: ${t.accentSoft} !important;`,
     `  --color-foreground: ${t.foreground} !important;`,
@@ -214,6 +216,8 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
   // 文字靠 text-shadow 与侧栏 scrim 托底，focus 档才收拢成重磨砂
   const blur = p.task === 'focus' ? '26px' : '0px';
   const backdropBlur = p.task === 'focus' ? '10px' : '0px';
+  // 下拉/菜单的底色变透后必须有毛玻璃托底，否则壁纸的高频细节会穿字
+  const popoverBlur = p.task === 'focus' ? '26px' : '18px';
   // 裸字直接压壁纸时投影是唯一可读性来源：紧凑轮廓 + 柔和光晕两段叠加，
   // 半径大的那段负责把字从亮部"抬"出来，小半径段保持字形锐利
   const textShadow = {
@@ -277,6 +281,17 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     `  filter: blur(${backdropBlur});`,
     '}',
     `[class~="bg-background"], [class~="bg-sidebar"], [class~="bg-header"] { backdrop-filter: blur(${blur}) saturate(1.08); }`,
+    // popover 直加毛玻璃是有意为之：它的浮层内容不带 fixed 定位子层（Radix 的下拉/
+    // 选择器再往外弹时已 portal 到 body），所以不会形成包含块陷阱。此结论未在真实
+    // 宿主逐项验证；一旦看到 popover 里的子层被裁成一条边，就改用下面 bg-menu 的
+    // ::before 写法，不要反过来把 menu 改回直加。
+    `[class~="bg-popover"], [class~="bg-popover/95"], [class~="bg-popover/98"] { backdrop-filter: blur(${popoverBlur}) saturate(1.08); }`,
+    // 菜单不能直接加 backdrop-filter：它会成为 Radix 子菜单 fixed 层的包含块，
+    // 子菜单随即被菜单自身的 overflow 裁成一条边；毛玻璃只放在伪元素上。
+    '[class~="bg-menu"] { position: relative; }',
+    `[class~="bg-menu"]::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; backdrop-filter: blur(${popoverBlur}) saturate(1.08); pointer-events: none; }`,
+    // 开关旋钮吃 --color-primary-foreground（全局是对比色）；只在开关上改白，避免影响主按钮文字
+    '[class~="group/switch"] { --color-primary-foreground: #ffffff !important; }',
     ''
   ].join('\n');
 }
