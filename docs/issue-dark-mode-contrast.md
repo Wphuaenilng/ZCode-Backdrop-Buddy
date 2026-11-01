@@ -414,3 +414,114 @@ darkPanel = clamp(panel / 100, 0.10, 0.92)    # 原 max(亮度推导值, panel/1
 - darkDim 使用新系数与边界，仍随壁纸高光单调增加。
 - 浅色 token 不因滑块下限之外的深色改动而变化；卡片、输入框、侧栏、标题栏和弹窗保底保持原值。
 - 运行目录的 `color.ps1` 必须与源码内容一致；重新 apply 后读取实际 token，不以 UI 滑块值代替宿主验证。
+
+## 17. Codex 输入框顶部芯片黑杠（2026-10-31）
+
+- 触发：用户截图反馈 Codex 宿主（ChatGPT 桌面版，OpenAI.Codex MSIX）输入框上方整条发黑，与浅调纸飞机壁纸不协调；壁纸为高调亮图（mean 0.848、p90 0.920）。
+- 宿主状态：CDP 9232（ChatGPT.exe 自带调试端口），主题 `ergouzi-paper-comet-light`，页面深色模式，注入生效。
+
+### 17.1 实测根因
+
+| # | 发现 | 证据 |
+| --- | --- | --- |
+| 1 | 黑条是 composer 顶部的项目芯片行（"AI-Ask"，约 710×42，浮在壁纸上），类 `.bg-background-composer-action-bar` → `background-color: var(--color-background-composer-action-bar)` | `CSS.getMatchedStylesForNode` 唯一一条背景声明；全页 `bg-background-composer-action-bar` 命中 1 个元素 |
+| 2 | 注入把该 token 映射成 `t.popover`（深色 0.97 近实底）→ 亮壁纸上是纯黑一条；而输入框主体 `_ComposerLayoutBody_` 吃 card（0.44）半透明，所以一黑一透 | 实测 `--color-background-composer-action-bar: rgba(18,18,20,0.97)`、`--color-background-composer-surface: 0.44` |
+| 3 | 输入框主体实际由 `_ComposerLayoutBody_`（`--app-color-background-elevated-primary-opaque` 族）着色，第 14 节"输入框纯黑"根因中的 opaque 族映射仍正确 | 实测 elevated-primary(-opaque) = 0.44 |
+
+### 17.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/chatgpt.mjs` | `--color-background-composer-action-bar` 由 `t.popover` 改为 `t.card`：芯片行跟输入框主体同一材质；`--app-color-background-elevated-secondary-opaque` 保持 `t.popover`（真实浮层材质不动） |
+| `tests/kernel/chatgpt-profile.test.mjs` | 新增断言：明暗两套 CSS 中该 token 均等于 card 值 |
+| `.design/tmp/inspect-composer.mjs`、`.design/tmp/reapply-chatgpt.mjs` | 新增探针与复刻 apply 管线的重新注入脚本（亮度缓存 → color.ps1 → buildThemeCss → 白名单 → blob 交付 → 注入 → verify → 截图） |
+
+### 17.3 验证
+
+- kernel 测试 151 用例全部通过。
+- 生成 CSS 7,027 B，`validate-css.ps1` 白名单通过。
+- 实机重新注入（源码管线复刻，等价 UI 重新 apply）：主窗口与 Spotlight 窗口均 verify 通过；实测芯片 token 变为 `rgba(18,18,20,0.44)`，与输入框主体一致。
+- 截图：`.design/tmp/after-chatgpt-chip-fix.png`。
+- 同步：`kernel/host/chatgpt.mjs` 已按内容校验（sha256 一致）同步到运行目录 `build/out/BackdropBuddy-0.1.4/kernel/host/`。
+- 注意：正在运行的 BackdropBuddy 管理器内核进程仍是旧代码，**重启管理器后**从 UI 再 apply 才会用新映射；当前页面上的注入已是修复后的 CSS，不重启也不回退（除非点重新 apply）。
+
+## 18. composer 层次与 Codex 主题色（2026-10-31 第二轮）
+
+- 触发：用户两条反馈——① 芯片条与输入框主体同色（都是 card 0.44），圆角矩形接触处的叠深看起来像渲染毛病，希望"输入框更深一些"拉开层次；② UI 里选了主题色（accent）在 Codex 宿主上毫无效果。
+- 现场变化：用户在 UI 重新 apply 过（管理器内核未重启），页面回到旧映射（action-bar 0.97）， accent 试验值 `#FF80C0` 只进了 `--bb-accent` 自留变量；主题/pointer 保存的 accent 仍为 `#E96F79`。
+
+### 18.1 实测结论
+
+| # | 发现 | 证据 |
+| --- | --- | --- |
+| 1 | composer 主体（`_ComposerLayoutRoot_`/`_ComposerLayoutBody_`，painter 会随渲染在两者间移动）通过宿主规则 `--composer-layout-surface-background` 取色，来源是 `--color-surface-elevated-secondary`（variant=default 竞争规则之一）或 `--color-background-composer-surface` | `CSS.getMatchedStylesForNode` 两条竞争规则；variant 实测 `default` |
+| 2 | 发送按钮（`.bg-composer-primary`）吃 `--color-background-composer-primary`（原生 #ffffff 白圆钮），文字/图标吃 `--color-text-composer-primary` | 实测 bg `rgb(255,255,255)` |
+| 3 | Codex 的强调色体系全部派生自 `--codex-base-accent`（原生 `#339cff` 蓝）：`--app-color-text/icon-accent`、`--color-background-accent-action`、`--link-primary-text-color`、`--color-ring-primary*`、`--app-color-background-accent(-hover)` 等；`chatgpt.mjs` 此前一个都没映射，`--bb-accent` 宿主根本不读 | `:root` 枚举 90+ 个 accent/brand/primary token |
+
+### 18.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `platform/windows/theme/color.ps1` | 新增 `composer` token：`clamp(panel+0.18+bubble*0.10, floor, cap)`，floor 深色 0.58 / 浅色 0.62，cap 0.80 / 0.86——比 card 深一档、比 input 透一档的"输入框主体"专用材质 |
+| `kernel/host/chatgpt.mjs` | `--color-background-composer-surface` 改吃 `t.composer`（缺 token 时回退 `t.card`）；新增 `:root, html[data-theme="dark"]` accent 块，映射 `--codex-base-accent`、text/icon-accent、`--color-background-composer-primary`（发送键）、`--color-background-primary-solid(+hover/active)`（hover/active 用 shade() 向黑压暗 8%/16%）、`--link-primary-text-color`、`--color-ring-primary*`（accent@0.73）、`--app-color-background-accent(-hover)`（accent@0.16/0.26）与文字对比色 `t.contrast`；选区高亮改 accent@0.35。`--color-chat-accent-*`（模型专属色）与 `--app-color-accent-*` 分类色板不动 |
+| `tests/kernel/chatgpt-profile.test.mjs`、`tests/kernel/host.test.mjs` | fixture 增加 composer token；断言 composer 深一档（明暗两套）、accent 块命中、color.ps1 滑块 0/100 两端 composer 值 |
+
+### 18.3 验证
+
+- kernel 测试 151/151 通过（`--test-concurrency=2`；默认并发下 startup lifecycle 两个 JSDOM 用例会因资源竞争偶发失败，与本次改动无关，单独重跑即过）。
+- 实机重新注入（复刻 apply 管线）：composer 主体实测 `rgba(18,18,20,0.58)`、芯片条 `rgba(18,18,20,0.44)`、发送键 `rgb(233,111,121)`（= accent #E96F79）；侧栏项目名/品牌字/`--codex-base-accent` 全部跟随主题色。
+- 截图：`.design/tmp/after-chatgpt-chip-fix.png`（发送键粉色、输入框比芯片深一档）。
+- 同步：`kernel/host/chatgpt.mjs` 与 `platform/windows/theme/color.ps1` 已按 sha256 校验同步到 `build/out/BackdropBuddy-0.1.4/`。
+- 遗留：管理器内核进程仍是旧代码——**重启 BackdropBuddy 后**UI 的 apply 才会带上 composer 深一档与 accent 映射；`--color-surface-elevated-secondary` 若在 variant 竞争中获胜（当前未观察到），composer 主体会退回 card 色，届时把它也指到 `t.composer` 即可。
+
+## 19. accent 收敛、弹层加深与分组条黑带（2026-10-31 第三轮）
+
+- 触发：用户三条反馈——① 任务列表不要主题色，accent 留在发送按钮/按钮边框即可；② 输入框和文件栏（"添加"弹层）再深一些，否则选文件时可读性差；③ "添加/插件"分组条的加黑效果一般，与弹层边缘之间有空隙。
+
+### 19.1 实测根因
+
+| # | 发现 | 证据 |
+| --- | --- | --- |
+| 1 | 侧栏任务列表的粉字不是我们直接映射的：宿主把侧栏作用域的 `--color-text` 重定义为 `color-mix(in oklab, var(--codex-base-accent) 85%, transparent)`，accent 一映射整片继承 | 沿祖先链取 `getComputedStyle().getPropertyValue('--color-text')`：L4 为 `#e8e8ea`，L3 起变为 mix 且字面量是我们的 `#e96f79`；accent token 逐个临时置绿仅 base-accent 路径响应 |
+| 2 | "添加"弹层容器 = `bg-surface-elevated-secondary` → `var(--color-surface-elevated-secondary)`（card 0.44），太透 | `CSS.getMatchedStylesForNode` |
+| 3 | 分组条自带回退写法 `background-color: var(--suggestion-menu-header-background, var(--color-surface-elevated-secondary))`——回退值与容器同色，同色叠深成 0.69 黑带，而分组条比容器窄 ~10px，两侧露出空隙 | 同上；分组条 rect x=548/w=716 vs 容器 x=543/w=736 |
+
+### 19.2 改动
+
+| 文件 | 改动 |
+| --- | --- |
+| `kernel/host/chatgpt.mjs` | accent 块收敛：只保留 `--color-background-composer-primary`（发送键）+ 文字对比色、`--color-ring-primary*` 四个焦点光圈、`--color-background-text-selection`；删除 `--codex-base-accent` 与文字/图标/链接/accent-action/primary-solid 族映射（全部回原生）。`--color-surface-elevated-secondary` 改吃 `t.composer`（弹层与 composer 同材质加深）。chatgptVars 新增 `--suggestion-menu-header-background: transparent`（分组条融入弹层）。删除无使用者的 shade() |
+| `platform/windows/theme/color.ps1` | composer 保底加深：深色 0.58→0.66、浅色 0.62→0.70；上限 0.80→0.85 / 0.86→0.90 |
+| `tests/kernel/chatgpt-profile.test.mjs`、`tests/kernel/host.test.mjs` | fixture/composer 值随新保底；新增 elevated-secondary=composer、分组条 transparent 断言；accent 断言改为 composer-primary/ring 命中 + `--codex-base-accent`/`--link-primary-text-color` 不出现（防回归） |
+
+### 19.3 验证
+
+- kernel 测试 151/151（`--test-concurrency=2`）。
+- 实机重新注入后逐项读取：侧栏 `--color-text` 变为 `color-mix(in oklab, #ffffff 85%, transparent)`（中性白，无主题色）；`--codex-base-accent` 回到原生 `#339cff`；composer 主体与弹层容器均 `rgba(18,18,20,0.66)`；`--suggestion-menu-header-background: transparent`；发送键保持 `rgb(233,111,121)`。
+- 截图：`.design/tmp/after-round3.png`（侧栏白字、弹层变实无黑带、发送键主题色）。
+- 同步：chatgpt.mjs 与 color.ps1 按 sha256 校验同步到 `build/out/BackdropBuddy-0.1.4/`。
+- 备注：composer 在滑块 ≥48% 后才跟随滑块超过 0.66 保底；探针脚本沉淀在 `.design/tmp/probe-sidebar-*.mjs`、`probe-plus-*.mjs`（含打开"添加"菜单的 CDP 点击法：aria-label 前缀"添加文件" + JS click）。
+
+## 20. 壳自绘标题栏（2026-10-31）
+
+- 触发：用户反馈主窗口标题栏的应用图标几乎贴住左缘、右侧窗控也不留白，最大化后更贴边；主流应用都有间距。
+- 根因：主窗口此前用系统默认标题栏（XAML 无 WindowChrome），图标内边距由系统绘制、不可调。
+- 改动（`src/BackdropBuddy.Shell/MainWindow.xaml` + `.xaml.cs`）：
+  - `WindowChrome`：CaptionHeight 40、ResizeBorderThickness 8、UseAeroCaptionButtons=False，WebView 内容整体下移一行；
+  - 自绘标题栏：图标（Assets/app-icon.png）+ 标题左距 12px；右侧 —/□/× 三个 46×32 按钮（min/max/close），close hover 红底白叉；
+  - 窗控图形用 **Path 矢量**画（Segoe MDL2/Fluent 字体字形在本机渲染为空，弃用图标字体）；最大化/还原双态图形随 WindowState 触发器切换；
+  - 最大化时根 Grid margin 8 补偿窗口外扩，标题栏内容不再贴屏幕边。
+- 验证：UIA 确认三按钮位于右上角且 offscreen=False；真实移鼠标到关闭键上截屏出现红底白 X hover；最大化态对右上角像素采样到字形颜色。注意 `PrintWindow` 对 WPF DX 窗口会返回过期合成帧（左侧新、右侧旧），不能作为此类验证依据，须用 CopyFromScreen/GetPixel。
+- 已知取舍：Win11 悬停最大化按钮的 Snap Layouts 飞出面板在自绘按钮上不可用（需额外 WM_NCHITTEST 魔改），点击最大化/还原、拖拽、双击标题栏、窗口右键系统菜单不受影响。
+- 追加（同日）：Win11 对 WindowChrome 窗口默认不给圆角——新增 `Infrastructure/Win11Corners.cs`，在 MainWindow 与 SplashWindow 的 `OnSourceInitialized` 里调 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2)`；旧系统调用失败保持方角。实测 `DwmGetWindowAttribute` 回读 value=2，左上角出现 8px 弧线。
+- 追加（同日第二轮）：用户反馈窗控按钮偏高一截且贴住右缘——按钮组 `VerticalAlignment` Top→Center（与左侧图标/标题同中线）、三个 Path 显式 Center（ContentPresenter 对固定尺寸内容默认不居中）、按钮组右移 6px（Margin 0,0,6,0）。
+
+## 21. 控制台主题库工具栏减负（2026-11-01）
+
+- 触发：用户反馈主题库区按钮"多且杂"——搜索/分类/来源/排序占一行，四个深色大按钮（添加图片/导入主题包/导出主题/删除我的主题）又占一整行，层级全平。
+- 改动（`ui/src/components/ConsoleView.jsx` + `ui/src/styles.css`）：
+  - 四个操作按钮移入"主题库"标题行右侧（新 `.library-head` 行，flex 右对齐），省掉一整行，库操作与库标题成组；
+  - 按钮分层：添加图片 = `dark` 主按钮；导入主题包 / 导出主题 = `light` 次级（白底描边）；删除我的主题 = 新 `danger` 样式（白底红字，hover 浅红底），进入确认态后变 `danger-solid` 实底红——危险操作平时安静、确认时醒目；
+  - 过滤行（搜索/分类/来源/排序）保持原样，窄窗口时各自换行不变。
+- 追加（同日）：用户反馈标题行太挤——`.library-head` 补回 14px 下边距（原标题行的 12px 下边距在合并时丢了），标题行内按钮收敛为 30px 高、12px 内边距、6px 间距，与 13.5px 标题同线不再压秤。
+- 构建走 eslint + vite + CSP + jsdom 冒烟（kernel 未动，`-SkipTests` 跳过内核测试）。

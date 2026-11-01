@@ -62,6 +62,12 @@ namespace BackdropBuddy.Shell
             Skip.MouseLeftButtonDown += OnSkipMouseDown;
         }
 
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            Win11Corners.Apply(this);
+        }
+
         public void AttachTo(Window owner)
         {
             if (owner == null || _attached || _closed) return;

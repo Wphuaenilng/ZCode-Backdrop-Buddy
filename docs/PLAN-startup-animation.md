@@ -66,7 +66,7 @@
 - 当前只有一台物理显示器，多显示器尚未实测；原生 OS 键鼠输入尚未实测，既有输入验证使用 CDP 或 DOM。
 - 真实启动动画验收仅覆盖 ZCode 主渲染器；多宿主和其他窗口类型仍需分别做真实验收。
 - `file:` 图片的 Network 事件在本机 Chromium 上不稳定；图片证据采用实际计算后的背景 URL 与截图，不宣称整个宿主启动期网络请求为 0。
-- 真实 20 秒硬截止尚未通过拖延真实宿主 ready 来触发；目前由 JSDOM 生命周期测试以 3.5s 配置覆盖提前触发路径。
+- 真实 20 秒硬截止已于 2026-10-31 关闭：真实 Chromium（Edge 156，独立 profile，有头窗口）加载 `file:…/out/renderer/index.html` 形态的"永不就绪"页面（body 永不带 `zcode-startup-ready`、`#root` 无正文），经生产注入器以默认 `maxDurationMs=20000` 注入；页面内轮询观测到 `finish('timeout')`（pageNow≈20.5s）与完整清理（层元素、样式表、`window.__backdropBuddyStartupLayer` 全部移除，pageNow≈21.5s）。窗口被遮挡时 Chromium 后台页计时器钳制会把时刻拉长约 1s；未钳制的精确时序仍以 JSDOM 生命周期测试为准。证据：`.kimi-work/startup-deadline-20261031/summary.json`（注入器事件、45 次轮询转录、假宿主页与脚本齐全）。
 
 ### 0.4 证据位置
 

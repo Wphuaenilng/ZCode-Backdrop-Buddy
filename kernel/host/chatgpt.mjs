@@ -91,14 +91,17 @@ function chatgptVars(t) {
     `  --color-surface-secondary: ${t.panel} !important;`,
     `  --color-surface-tertiary: ${t.surface} !important;`,
     `  --color-surface-elevated: ${t.card} !important;`,
-    `  --color-surface-elevated-secondary: ${t.card} !important;`,
+    `  --color-surface-elevated-secondary: ${t.composer || t.card} !important;`,
     `  --color-surface-canvas: ${t.panel} !important;`,
     `  --color-surface-card: ${t.card} !important;`,
     // —— 命名背景：侧栏 / 输入区 / 弹层 / 提示 / 代码输出
     `  --color-background-panel: ${t.panel} !important;`,
     `  --color-background-page-search: ${t.sidebar} !important;`,
-    `  --color-background-composer-surface: ${t.card} !important;`,
-    `  --color-background-composer-action-bar: ${t.popover} !important;`,
+    `  --color-background-composer-surface: ${t.composer || t.card} !important;`,
+    // composer 顶部的项目芯片（bg-background-composer-action-bar）整条浮在壁纸上，
+    // 唯一可见使用者就是它（2026-10-31 实测全页 1 个）；跟输入框主体同一材质，
+    // 不能用 popover 的近实底——亮壁纸上会是一条黑杠
+    `  --color-background-composer-action-bar: ${t.card} !important;`,
     `  --color-background-tooltip: ${t.popover} !important;`,
     `  --color-background-tooltip-classic: ${t.popover} !important;`,
     `  --color-background-callout-surface: ${t.card} !important;`,
@@ -113,6 +116,9 @@ function chatgptVars(t) {
     `  --color-background-secondary-soft: ${t.surface} !important;`,
     `  --color-background-secondary-soft-hover: ${t.surfaceHover} !important;`,
     `  --color-codex-terminal-background: ${t.card} !important;`,
+    // "添加/插件"分组条自带 var(--suggestion-menu-header-background, surface-elevated-secondary)
+    // 回退：不定义时它叠在弹层容器上同色加深成黑带，且比容器窄一圈露出空隙——置透明让它融入弹层
+    '  --suggestion-menu-header-background: transparent !important;',
     // —— 文字：正文/次级/最弱/提示，压住壁纸的是 text-shadow 与 dim，不靠纯白
     `  --color-text: ${t.foreground} !important;`,
     `  --color-text-primary: ${t.foreground} !important;`,
@@ -166,9 +172,18 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     // 浅色值挂在 :root（默认），深色值挂在宿主自己的 data-theme 上；同 !important 时按特异性后者胜
     modeBlock(':root', light, 'light'),
     modeBlock('html[data-theme="dark"]', dark, 'dark'),
-    ':root {',
+    // —— 主题强调色：只落在发送按钮与焦点光圈（按钮边框）上。
+    // 不映射 --codex-base-accent：宿主用它派生侧栏 --color-text（color-mix 85%），
+    // 任务列表会被整个染成主题色（2026-10-31 用户反馈），文字/链接族一律保持原生。
+    ':root, html[data-theme="dark"] {',
     `  --bb-accent: ${p.accent};`,
-    '  --color-background-text-selection: rgba(46,127,203,0.35) !important;',
+    `  --color-background-composer-primary: ${p.accent} !important;`,
+    `  --color-text-composer-primary: ${light.contrast} !important;`,
+    `  --color-ring-primary: ${hexToRgba(p.accent, 0.73)} !important;`,
+    `  --color-ring-primary-ghost: ${hexToRgba(p.accent, 0.73)} !important;`,
+    `  --color-ring-primary-solid: ${hexToRgba(p.accent, 0.73)} !important;`,
+    `  --color-ring-primary-outline: ${hexToRgba(p.accent, 0.73)} !important;`,
+    `  --color-background-text-selection: ${hexToRgba(p.accent, 0.35)} !important;`,
     '}',
     backdropRules({
       p: { ...DEFAULT_IDS, rootSelector: CHATGPT_HOST.rootSelector },

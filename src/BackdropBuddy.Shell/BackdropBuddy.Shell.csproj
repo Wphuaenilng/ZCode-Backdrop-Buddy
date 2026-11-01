@@ -84,6 +84,7 @@
     <Compile Include="Infrastructure\ProtocolBridge.cs" />
     <Compile Include="Infrastructure\SchedulePump.cs" />
     <Compile Include="Infrastructure\SingleInstance.cs" />
+    <Compile Include="Infrastructure\Win11Corners.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

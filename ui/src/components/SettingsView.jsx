@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import HostPreview from './HostPreview.jsx';
 import { ColorField, RangeField, SelectField } from './Fields.jsx';
 import { normalizeParams } from '../data/params.js';
 
@@ -112,53 +113,51 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
       ) : null}
       <div className="settings-layout">
         <header className="settings-header">
-          <div>
+          <div className="settings-heading">
             <div className="section-title">主题设置</div>
             <p>调整当前主题，或管理应用行为与自动切换规则。</p>
           </div>
-          {activeTab === 'theme' ? <span className="settings-context">正在编辑：{theme?.name}</span> : null}
+          <nav className="settings-tabs" role="tablist" aria-label="设置分类">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'theme'}
+              aria-controls="settings-panel-theme"
+              className={activeTab === 'theme' ? 'active' : ''}
+              onClick={() => setActiveTab('theme')}
+              data-testid="settings-tab-theme"
+            >
+              主题参数
+            </button>
+            {native ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'preferences'}
+                aria-controls="settings-panel-preferences"
+                className={activeTab === 'preferences' ? 'active' : ''}
+                onClick={() => setActiveTab('preferences')}
+                data-testid="settings-tab-preferences"
+              >
+                应用偏好
+              </button>
+            ) : null}
+            {native ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'schedule'}
+                aria-controls="settings-panel-schedule"
+                className={activeTab === 'schedule' ? 'active' : ''}
+                onClick={() => setActiveTab('schedule')}
+                data-testid="settings-tab-schedule"
+              >
+                自动切换
+                {rules.length ? <span className="tab-count">{rules.length}</span> : null}
+              </button>
+            ) : null}
+          </nav>
         </header>
-
-        <nav className="settings-tabs" role="tablist" aria-label="设置分类">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'theme'}
-            aria-controls="settings-panel-theme"
-            className={activeTab === 'theme' ? 'active' : ''}
-            onClick={() => setActiveTab('theme')}
-            data-testid="settings-tab-theme"
-          >
-            主题参数
-          </button>
-          {native ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'preferences'}
-              aria-controls="settings-panel-preferences"
-              className={activeTab === 'preferences' ? 'active' : ''}
-              onClick={() => setActiveTab('preferences')}
-              data-testid="settings-tab-preferences"
-            >
-              应用偏好
-            </button>
-          ) : null}
-          {native ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'schedule'}
-              aria-controls="settings-panel-schedule"
-              className={activeTab === 'schedule' ? 'active' : ''}
-              onClick={() => setActiveTab('schedule')}
-              data-testid="settings-tab-schedule"
-            >
-              自动切换
-              {rules.length ? <span className="tab-count">{rules.length}</span> : null}
-            </button>
-          ) : null}
-        </nav>
 
         {activeTab === 'theme' ? (
           <div className="settings-card theme-settings" id="settings-panel-theme" role="tabpanel">
@@ -277,6 +276,15 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
                 </div>
               </section>
             </div>
+
+            <aside className="settings-preview-pane" aria-label="主题效果实时预览">
+              <div className="settings-preview-head">
+                <span>效果预览</span>
+                <span className="live-badge"><i />实时</span>
+              </div>
+              <HostPreview theme={theme} params={form} />
+              <p className="settings-preview-note">取景、安全区与界面不透明度会随左侧参数即时更新；保存后才写入主题。</p>
+            </aside>
 
             <div className="settings-savebar">
               <span>保存后刷新正在使用的主题；已暂停的皮肤保持暂停。</span>

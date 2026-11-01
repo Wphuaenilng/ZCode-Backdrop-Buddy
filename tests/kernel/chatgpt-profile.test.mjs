@@ -13,6 +13,7 @@ const TOKENS = {
   light: {
     panel: 'rgba(255,255,255,0.30)', sidebar: 'rgba(255,255,255,0.40)', header: 'rgba(255,255,255,0.35)',
     card: 'rgba(255,255,255,0.55)', popover: 'rgba(255,255,255,0.98)', input: 'rgba(255,255,255,0.90)',
+    composer: 'rgba(255,255,255,0.70)',
     surface: 'rgba(255,255,255,0.20)', surfaceHover: 'rgba(255,255,255,0.30)', selected: 'rgba(46,127,203,0.22)',
     accentSoft: 'rgba(46,127,203,0.16)', terminal: 'rgba(255,255,255,1)', scrim: 'rgba(255,255,255,0.35)',
     dim: 'rgba(255,255,255,0.12)', foreground: '#1c1c1e', foregroundSubtle: 'rgba(28,28,30,0.72)',
@@ -22,6 +23,7 @@ const TOKENS = {
   dark: {
     panel: 'rgba(18,18,20,0.36)', sidebar: 'rgba(18,18,20,0.52)', header: 'rgba(18,18,20,0.45)',
     card: 'rgba(18,18,20,0.55)', popover: 'rgba(18,18,20,0.97)', input: 'rgba(18,18,20,0.90)',
+    composer: 'rgba(18,18,20,0.66)',
     surface: 'rgba(18,18,20,0.15)', surfaceHover: 'rgba(18,18,20,0.25)', selected: 'rgba(46,127,203,0.22)',
     accentSoft: 'rgba(46,127,203,0.16)', terminal: 'rgba(18,18,20,1)', scrim: 'rgba(18,18,20,0.38)',
     dim: 'rgba(18,18,20,0.18)', foreground: '#e8e8ea', foregroundSubtle: 'rgba(232,232,234,0.78)',
@@ -50,6 +52,22 @@ test('chatgpt profile: 专用映射命中关键 token（输入框 opaque 根因 
   // 输入框不透明的根因是 app 级 opaque 变量族，通用 varMap 覆盖不到
   assert.match(css, /--app-color-background-elevated-primary-opaque: rgba\(18,18,20,0\.55\)/);
   assert.match(css, /--app-color-background-elevated-secondary-opaque: rgba\(18,18,20,0\.97\)/);
+  // composer 顶部芯片条跟卡片同材质（card），不能用 popover 实底：亮壁纸上是黑杠
+  assert.match(css, /--color-background-composer-action-bar: rgba\(18,18,20,0\.55\)/);
+  assert.match(css, /:root\s*\{[\s\S]*?--color-background-composer-action-bar: rgba\(255,255,255,0\.55\)/);
+  // composer 主体比芯片深一档（composer token），叠深接触面才不像渲染毛病
+  assert.match(css, /--color-background-composer-surface: rgba\(18,18,20,0\.66\)/);
+  assert.match(css, /:root\s*\{[\s\S]*?--color-background-composer-surface: rgba\(255,255,255,0\.70\)/);
+  // 添加/插件弹层与 composer 同吃 elevated-secondary（composer 材质），分组条置透明防同色叠黑
+  assert.match(css, /--color-surface-elevated-secondary: rgba\(18,18,20,0\.66\)/);
+  assert.match(css, /--suggestion-menu-header-background: transparent/);
+  // 主题强调色只落发送键/焦点光圈/选区；codex-base-accent 必须保持原生，
+  // 否则宿主把侧栏 --color-text 派生成 color-mix(accent 85%)，任务列表整片染成主题色
+  assert.match(css, /--color-background-composer-primary: #2e7fcb/);
+  assert.match(css, /--color-text-composer-primary: #ffffff/);
+  assert.match(css, /--color-ring-primary: rgba\(46,127,203,0\.73\)/);
+  assert.doesNotMatch(css, /--codex-base-accent:/);
+  assert.doesNotMatch(css, /--link-primary-text-color:/);
   assert.match(css, /--app-color-background-surface: rgba\(18,18,20,0\.36\)/);
   // surface 语义层 + 侧栏 + tooltip
   assert.match(css, /--color-surface-elevated: rgba\(18,18,20,0\.55\)/);

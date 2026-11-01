@@ -355,11 +355,13 @@ test('host platform: dark panel follows the slider while local contrast guards r
   assert.equal(zero.dark.header, 'rgba(18,18,20,0.28)');
   assert.equal(zero.dark.card, 'rgba(18,18,20,0.35)');
   assert.equal(zero.dark.input, 'rgba(18,18,20,0.88)');
+  assert.equal(zero.dark.composer, 'rgba(18,18,20,0.66)');
   assert.equal(zero.dark.popover, 'rgba(18,18,20,0.97)');
   assert.equal(zero.dark.popoverGlass, 'rgba(18,18,20,0.77)');
 
   const high = await run(dimValues, '100');
   assert.equal(high.dark.panel, 'rgba(18,18,20,0.92)');
+  assert.equal(high.dark.composer, 'rgba(18,18,20,0.85)');
   assert.equal(high.light.panel, 'rgba(255,255,255,0.92)');
 });
 

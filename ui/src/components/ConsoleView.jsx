@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ThemeCard from './ThemeCard.jsx';
 import HostPreview from './HostPreview.jsx';
 import { TAG_LIST } from '../data/params.js';
@@ -46,12 +46,12 @@ export default function ConsoleView({
   onExportAssets,
   onDelete,
   onEditParams,
-  onRefresh,
   recovery,
   onRecoveryAction,
   onDismissRecovery
 }) {
   const packInput = useRef(null);
+  const [runtimeOpen, setRuntimeOpen] = useState(true);
   const runningId = runningTheme ? runningTheme.id : null;
   const recoveryCopy = recovery ? (RECOVERY_COPY(hostName || '宿主')[recovery.verdict] || null) : null;
 
@@ -115,62 +115,65 @@ export default function ConsoleView({
 
       <div className="console-layout">
         <div className="library">
-          <div className="section-title">主题库</div>
-
-          <div className="filters">
-            <input
-              className="search"
-              type="search"
-              placeholder="主题名称或标签"
-              autoComplete="off"
-              value={filters.search}
-              onChange={(event) => onFilter({ search: event.target.value })}
-              data-testid="theme-search"
-            />
-
-            <select
-              className="select wide"
-              aria-label="分类"
-              value={filters.category}
-              onChange={(event) => onFilter({ category: event.target.value })}
-              data-testid="category-filter"
-            >
-              <option value="all">全部分类</option>
-              {TAG_LIST.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-            </select>
-
-            <div className="seg" role="group" aria-label="主题来源">
-              {SOURCES.map((source) => (
-                <button
-                  key={source.value}
-                  type="button"
-                  className={filters.source === source.value ? 'active' : ''}
-                  onClick={() => onFilter({ source: source.value })}
-                  data-testid={`source-${source.value}`}
-                >
-                  {source.label}
-                </button>
-              ))}
+          <div className="library-toolbar">
+            <div className="library-title">
+              <span className="section-title">主题库</span>
+              <span className="library-count" title="当前筛选结果" aria-label={`当前显示 ${themes.length} 个主题`}>{themes.length}</span>
             </div>
 
-            <select
-              className="select short"
-              aria-label="排序"
-              value={filters.sort}
-              onChange={(event) => onFilter({ sort: event.target.value })}
-              data-testid="sort-filter"
-            >
-              <option value="catalog">目录顺序</option>
-              <option value="name">名称</option>
-              <option value="recent">最近</option>
-            </select>
-          </div>
+            <div className="filters">
+              <input
+                className="search"
+                type="search"
+                placeholder="主题名称或标签"
+                autoComplete="off"
+                value={filters.search}
+                onChange={(event) => onFilter({ search: event.target.value })}
+                data-testid="theme-search"
+              />
 
-          <div className="actions">
-            <button type="button" className="btn dark" onClick={onAddImage} data-testid="add-image">添加图片</button>
-            <button type="button" className="btn dark" onClick={() => (native ? onPickPack() : packInput.current?.click())} data-testid="import-pack">导入主题包</button>
-            <button type="button" className="btn dark" onClick={onExportTheme} data-testid="export-theme">导出主题</button>
-            <button type="button" className="btn dark" onClick={onDelete} data-testid="delete-theme">{deleteLabel}</button>
+              <select
+                className="select wide"
+                aria-label="分类"
+                value={filters.category}
+                onChange={(event) => onFilter({ category: event.target.value })}
+                data-testid="category-filter"
+              >
+                <option value="all">全部分类</option>
+                {TAG_LIST.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
+
+              <div className="seg" role="group" aria-label="主题来源">
+                {SOURCES.map((source) => (
+                  <button
+                    key={source.value}
+                    type="button"
+                    className={filters.source === source.value ? 'active' : ''}
+                    onClick={() => onFilter({ source: source.value })}
+                    data-testid={`source-${source.value}`}
+                  >
+                    {source.label}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                className="select short"
+                aria-label="排序"
+                value={filters.sort}
+                onChange={(event) => onFilter({ sort: event.target.value })}
+                data-testid="sort-filter"
+              >
+                <option value="catalog">目录顺序</option>
+                <option value="name">名称</option>
+                <option value="recent">最近</option>
+              </select>
+            </div>
+
+            <div className="actions">
+              <button type="button" className="btn dark" onClick={onAddImage} data-testid="add-image">添加图片</button>
+              <button type="button" className="btn light" onClick={() => (native ? onPickPack() : packInput.current?.click())} data-testid="import-pack">导入主题包</button>
+            </div>
           </div>
 
           <div className="theme-grid" data-testid="theme-grid">
@@ -213,7 +216,18 @@ export default function ConsoleView({
               paused={!!runningId && runningId === selectedId && paused}
             />
 
-            <div className="current-label">当前主题</div>
+            <div className="current-row">
+              <span className="current-label">当前主题</span>
+              {runningTheme ? (
+                <span
+                  className={`status-pill ${paused ? 'paused' : 'running'}`}
+                  data-testid="run-state"
+                >
+                  <i />
+                  {paused ? '已暂停' : '运行中'}
+                </span>
+              ) : null}
+            </div>
             <div className={`current-name${runningTheme ? '' : ' none'}`} data-testid="current-name">
               {runningTheme ? runningTheme.name : '未运行'}
             </div>
@@ -228,41 +242,64 @@ export default function ConsoleView({
               {applyBusy ? '正在处理…' : applyLabel}
             </button>
 
-            <div className="dual">
-              <button type="button" className="btn dark" onClick={onExportAssets} data-testid="download-assets">下载素材</button>
-              <button type="button" className="btn dark" onClick={onEditParams} data-testid="edit-params">编辑参数</button>
+            <div className="side-group">
+              <div className="side-group-head static">
+                <span className="side-group-title">主题操作</span>
+                {!runningTheme || runningTheme.id !== selectedTheme?.id ? (
+                  <span className="side-group-note">{selectedTheme ? selectedTheme.name : '未选择主题'}</span>
+                ) : null}
+              </div>
+              <div className="action-grid three">
+                <button type="button" className="btn soft" onClick={onEditParams} data-testid="edit-params">编辑参数</button>
+                <button type="button" className="btn light" onClick={onExportAssets} data-testid="download-assets">下载素材</button>
+                <button type="button" className="btn light" onClick={onExportTheme} data-testid="export-theme">导出主题</button>
+              </div>
+              <div className="side-danger-row">
+                <button
+                  type="button"
+                  className={`danger-link${deleteConfirm ? ' confirming' : ''}`}
+                  onClick={onDelete}
+                  data-testid="delete-theme"
+                >
+                  {deleteLabel}
+                </button>
+              </div>
             </div>
 
-            <div className="quad">
-              <button
-                type="button"
-                className={`btn ${runningTheme ? 'dark' : 'gray'}`}
-                disabled={!runningTheme}
-                onClick={onPause}
-                data-testid="pause"
-              >
-                {paused ? '继续' : '暂停'}
-              </button>
-              <button
-                type="button"
-                className={`btn ${runningTheme ? 'dark' : 'gray'}`}
-                disabled={!runningTheme}
-                onClick={onReset}
-                data-testid="reset"
-              >
-                重置
-              </button>
-              <button type="button" className="btn dark" onClick={onRefresh} data-testid="refresh">刷新</button>
-              <button
-                type="button"
-                className={`btn ${runningTheme ? 'dark' : 'gray'}`}
-                disabled={!runningTheme}
-                onClick={onRestore}
-                data-testid="restore"
-              >
-                恢复原貌
-              </button>
-            </div>
+            {runningTheme ? (
+              <div className="side-group">
+                <button
+                  type="button"
+                  className="side-group-head collapsible"
+                  aria-expanded={runtimeOpen}
+                  aria-controls="runtime-actions"
+                  title={runtimeOpen ? '收起运行控制' : '展开运行控制'}
+                  onClick={() => setRuntimeOpen((open) => !open)}
+                >
+                  <span className={`side-dot${paused ? ' paused' : ' running'}`} />
+                  <span className="side-group-title">运行控制</span>
+                  <span className="side-group-note">{paused ? '已暂停' : '运行中'} · {runningTheme.name}</span>
+                  <span className="side-caret" aria-hidden="true" />
+                </button>
+                {runtimeOpen ? (
+                  <div className="action-grid three" id="runtime-actions">
+                    <button type="button" className="btn light" onClick={onPause} data-testid="pause">
+                      {paused ? '继续' : '暂停'}
+                    </button>
+                    <button type="button" className="btn light" onClick={onReset} data-testid="reset">重置</button>
+                    <button type="button" className="btn light" onClick={onRestore} data-testid="restore">恢复原貌</button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="side-group">
+                <div className="side-group-head static idle">
+                  <span className="side-dot" />
+                  <span className="side-group-title">运行控制</span>
+                  <span className="side-group-note">应用主题后可用</span>
+                </div>
+              </div>
+            )}
           </div>
         </aside>
       </div>

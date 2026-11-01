@@ -45,8 +45,14 @@ function New-Tokens([string]$TokenMode, [double]$DimAlpha, [double]$ScrimAlpha, 
   $inputFloor = $(if ($isDark) { 0.88 } else { 0.90 })
   $cardCap = $(if ($isDark) { 0.70 } else { 0.80 })
   $inputCap = $(if ($isDark) { 0.94 } else { 0.96 })
+  # composer 主体比卡片深一档、比输入框透一档：与浮在上面的芯片条(card)拉开层次，
+  # 否则同色圆角矩形接触处的叠深看起来像渲染毛病（2026-10-31 用户反馈）；
+  # 弹层（surface-elevated-secondary）同吃这档，选文件时可读性优先
+  $composerFloor = $(if ($isDark) { 0.66 } else { 0.70 })
+  $composerCap = $(if ($isDark) { 0.85 } else { 0.90 })
   $cardAlpha = Clamp ($PanelAlpha + 0.14 + $BubbleValue * 0.10) $cardFloor $cardCap
   $inputAlpha = Clamp ($PanelAlpha + 0.18 + $BubbleValue * 0.10) $inputFloor $inputCap
+  $composerAlpha = Clamp ($PanelAlpha + 0.18 + $BubbleValue * 0.10) $composerFloor $composerCap
   $popoverAlpha = $(if ($isDark) { 0.97 } else { 0.98 })
   # 下拉/菜单是浮层，给壁纸留出透视；比卡片更实（要压住底下的高频细节），
   # 但不再接近全不透明，配合宿主侧的 backdrop-filter 读字
@@ -73,6 +79,7 @@ function New-Tokens([string]$TokenMode, [double]$DimAlpha, [double]$ScrimAlpha, 
     popover = (New-Rgba $r $g $b $popoverAlpha)
     popoverGlass = (New-Rgba $r $g $b $popoverGlassAlpha)
     input = (New-Rgba $r $g $b $inputAlpha)
+    composer = (New-Rgba $r $g $b $composerAlpha)
     surface = (New-Rgba $r $g $b $surfaceAlpha)
     surfaceHover = (New-Rgba $r $g $b $surfaceHoverAlpha)
     hoverWash = (New-Rgba $AccentR8 $AccentG8 $AccentB8 $hoverWashAlpha)

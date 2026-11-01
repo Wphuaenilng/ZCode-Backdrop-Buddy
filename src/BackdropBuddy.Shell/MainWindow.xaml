@@ -7,19 +7,130 @@
         WindowStartupLocation="CenterScreen"
         Background="#F1F2F6">
 
-    <Grid>
-        <wv2:WebView2 x:Name="WebView" Visibility="Collapsed"/>
+    <WindowChrome.WindowChrome>
+        <!-- 自绘标题栏：系统标题栏的图标内边距太小且改不了，主流应用都自己画 -->
+        <WindowChrome CaptionHeight="40"
+                      ResizeBorderThickness="8"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
-        <Border x:Name="ErrorPanel" Background="#0F1115" Visibility="Collapsed">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="760">
-                <TextBlock Text="BackdropBuddy 无法启动" FontSize="24" FontWeight="SemiBold"
-                           Foreground="#E8E3D8" HorizontalAlignment="Center"/>
-                <TextBlock x:Name="ErrorText" FontSize="13" Foreground="#C9A66B"
-                           TextWrapping="Wrap" Margin="0,14,0,0" TextAlignment="Center" LineHeight="22"/>
-                <TextBlock Text="日志：%LOCALAPPDATA%\BackdropBuddy\logs\shell.log"
-                           FontFamily="Consolas" FontSize="11" Foreground="#7C828C"
-                           Margin="0,18,0,0" HorizontalAlignment="Center"/>
-            </StackPanel>
+    <Window.Resources>
+        <Style x:Key="CaptionButton" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#2B2A26"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#E3E5EA"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#D8DBE1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="CaptionCloseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#E81123"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#C50F1F"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <!-- 最大化时窗口会外扩一个边框厚度，整体内缩补回，否则标题栏内容贴住屏幕边缘 -->
+    <Grid>
+        <Grid.Style>
+            <Style TargetType="Grid">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                        <Setter Property="Margin" Value="8"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Grid.Style>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#F1F2F6">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Image Source="Assets/app-icon.png" Width="16" Height="16"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text="BackdropBuddy" FontSize="12" Margin="8,0,0,2"
+                               Foreground="#2B2A26" VerticalAlignment="Center"/>
+                </StackPanel>
+                <!-- 按钮组与左侧图标/标题同一中线；右侧留 6px 不贴窗口边 -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Margin="0,0,6,0">
+                    <!-- 窗控图形用 Path 画，不依赖 Segoe MDL2/Fluent 图标字体（实测字体字形可能渲染为空） -->
+                    <Button Style="{StaticResource CaptionButton}" Click="OnMinimizeClick"
+                            AutomationProperties.Name="最小化">
+                        <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" Data="M 0,5 H 10" SnapsToDevicePixels="True"/>
+                    </Button>
+                    <Button Style="{StaticResource CaptionButton}" Click="OnMaximizeRestoreClick"
+                            AutomationProperties.Name="最大化或还原">
+                        <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" SnapsToDevicePixels="True">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Data" Value="M 0.5,0.5 H 9.5 V 9.5 H 0.5 Z"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                                            <Setter Property="Data" Value="M 2.5,2.5 V 0.5 H 9.5 V 7.5 H 7.5 M 0.5,2.5 H 7.5 V 9.5 H 0.5 Z"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+                    <Button Style="{StaticResource CaptionCloseButton}" Click="OnCloseClick"
+                            AutomationProperties.Name="关闭">
+                        <Path HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1" Data="M 0,0 L 9,9 M 9,0 L 0,9" SnapsToDevicePixels="True"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Border>
+
+        <Grid Grid.Row="1">
+            <wv2:WebView2 x:Name="WebView" Visibility="Collapsed"/>
+
+            <Border x:Name="ErrorPanel" Background="#0F1115" Visibility="Collapsed">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="760">
+                    <TextBlock Text="BackdropBuddy 无法启动" FontSize="24" FontWeight="SemiBold"
+                               Foreground="#E8E3D8" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ErrorText" FontSize="13" Foreground="#C9A66B"
+                               TextWrapping="Wrap" Margin="0,14,0,0" TextAlignment="Center" LineHeight="22"/>
+                    <TextBlock Text="日志：%LOCALAPPDATA%\BackdropBuddy\logs\shell.log"
+                               FontFamily="Consolas" FontSize="11" Foreground="#7C828C"
+                               Margin="0,18,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

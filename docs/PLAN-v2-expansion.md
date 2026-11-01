@@ -350,6 +350,7 @@
 | ChatGPT 真机接入全链路（detect 归属全过、2 窗口 blob 交付上妆、暂停/继续/恢复 verified、恢复后 clean） | `.design/chatgpt-probe/live-integrate.mjs` 与 `live-*.png`；`hosts/chatgpt.json`；内核测试 109/109 | 实测（2026-10-25） |
 | 内置宿主收窄到 ZCode（Obsidian 下线）+ generic 暗色玻璃选择器 bug 修复 | `kernel/host/registry.mjs`、`tests/kernel/profiles.test.mjs`（向导型宿主端到端）、内核测试 107/107 | 实测（2026-10-25，`node --test`） |
 | ffmpeg 不随包 | `docs/PLAN.md` §9.2 | 文档事实 |
+| 系统明暗调度全链路（真实系统切换 → 规则命中 → ChatGPT 双窗口换肤） | `.kimi-work/sched-systheme-20261031/summary.json`（内核日志节选 + CDP 验证） | 实测（2026-10-31） |
 
 ## 5. 未验证与待确认
 
@@ -357,7 +358,7 @@
 - **视频主题在宿主窗口最小化时不播放**：实测 `visibilityState:hidden` 下 `<video>` 停在 `currentTime 0 / paused`，把窗口还原后自行开始播放（2.73s → 4.16s）。这是 Chromium 对隐藏文档的常规行为，不是注入坏了，也不需要改；只是别把“最小化时看不到动画”当成 bug 报。
 - **多窗口的“真实第二窗口”只验到 ZCode 一种**：构造方式是宿主自己的 `window.open(同一个渲染 URL)`（浏览器级 CDP 的 `Target.createTarget` 在 Electron 上返回 `Not supported`，用不了）。Obsidian / 向导接入的自建 profile 多开窗口时是否也给出同样形态的 page target，未实测；`secondaryPattern` 排除辅助小窗这条只对 ZCode 的 `?windowKind=` 设过。
 - **多显示器没有单独验证**：实现按“每个渲染窗口一份”处理，同一窗口跨屏移动不涉及注入；多屏不同 DPI 下的视觉只做过单窗口观察，未做双屏实测。
-- **调度只验到“宿主开着”的路径**：时刻型与宿主明暗型在真机各命中一次（到点后 4s 换肤）；系统明暗型依赖 `SystemEvents.UserPreferenceChanged`，事件订阅与去抖是静态代码，**未真实触发过一次系统切换**。另外应用被彻底退出（不是最小化到托盘）时不会有任何计时器，规则要等下次开机才生效——这是设计取舍，不是缺陷，但用户不一定预期得到。
+- **系统明暗调度已于 2026-10-31 真实触发关闭**：注册表翻转 `AppsUseLightTheme` 并广播 `WM_SETTINGCHANGE "ImmersiveColorSet"`（与设置页切换等效），壳层 `SystemEvents.UserPreferenceChanged`（700ms 去抖）→ `schedule.tick(systemDark)` → 深色、浅色两条 `systemTheme` 规则先后命中（`reason=preference`），目标为 ChatGPT 桌面版（OpenAI.Codex）两个渲染窗口，CDP `data-bb-theme` 与 `--color-surface` 覆盖逐向验证，端到端 5.9s / 7.9s。证据：`.kimi-work/sched-systheme-20261031/summary.json`。时刻型与宿主明暗型此前已在真机各命中一次（到点后 4s 换肤）。应用被彻底退出（不是最小化到托盘）时不会有任何计时器，规则要等下次开机才生效——这是设计取舍，不是缺陷，但用户不一定预期得到。
 - **宿主页面自己重载过一次且原因未定**：2026-10-24 的真机跑动里观察到 ZCode 渲染进程在应用没开的时候变回过素页面（`adopted theme is no longer injected / page-clean`）。皮肤随重载丢失是已知设计（注入不跨文档），当时的补应用逻辑把它接住了；但“为什么会重载”没归因，不写成结论。
 - **跨产品（⑤）只在 AI-Pet 上验过，且用的是 devUrl 构建**：那个 exe 指向 `http://localhost:5199/`，我是用一个本地静态服务喂它的 `dist` 才跑起来；正式分发版的页面 URL（`tauri://localhost` / `http://tauri.localhost`）没有验，profile 的 `rendererPattern` 可能要改一行。其余自家产品（尺素集 / AI-Image-Studio / Cen-Memory 等）都是网页或小程序，没有可挂的桌面渲染进程，**没有验证**。
 - **无变量宿主的观感只做到"背景层 + 面板透明/磨砂 + 文字色"**：卡片磨砂用的是固定的白 0.16 / 黑 0.18，不跟主题走；深色主题在无变量宿主上只能换背景与文字色，图标、插画、渐变按钮都不动。要更像样需要给宿主补一层变量，或者内核长出"选择器组 → 前景/背景/边框/圆角"的映射表，属下一步。

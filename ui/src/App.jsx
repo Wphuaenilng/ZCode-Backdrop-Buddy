@@ -1238,7 +1238,6 @@ export default function App() {
             onExportAssets={exportAssets}
             onDelete={deleteTheme}
             onEditParams={() => { setSettingsId(library.selectedId); setView('settings'); }}
-            onRefresh={refreshLibrary}
             recovery={recoveryNotice}
             onRecoveryAction={handleRecoveryAction}
             onDismissRecovery={dismissRecovery}
