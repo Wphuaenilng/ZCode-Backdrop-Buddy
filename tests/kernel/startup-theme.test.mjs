@@ -73,6 +73,17 @@ test('startup theme: persistence, safe media, bbskin round trip and controlled p
     preview.data.html
   );
 
+  const draftPreview = await first.call(METHODS.THEME_STARTUP_PREVIEW, {
+    themeId: blankId,
+    startup: { preset: 'zcode-pop', holdMs: 3000 }
+  });
+  assert.equal(draftPreview.ok, true, JSON.stringify(draftPreview.error));
+  assert.equal(draftPreview.data.config.preset, 'zcode-pop');
+  assert.equal(draftPreview.data.config.holdMs, 3000);
+  const afterDraftPreview = await first.call(METHODS.THEME_GET, { themeId: blankId });
+  assert.equal(afterDraftPreview.data.theme.startup.preset, 'theme-reveal', '预览草稿不得修改已保存预设');
+  assert.equal(afterDraftPreview.data.theme.startup.holdMs, 1200, '预览草稿不得修改已保存停留时间');
+
   for (const startup of [
     { enabled: true, preset: 'remote-code', holdMs: 900, media: null },
     { enabled: true, preset: 'zcode-pop', holdMs: 899, media: null },
@@ -88,6 +99,9 @@ test('startup theme: persistence, safe media, bbskin round trip and controlled p
   const imported = await first.call(METHODS.THEME_IMPORT, { path: sourcePath, name: '静图主题' });
   assert.equal(imported.ok, true, JSON.stringify(imported.error));
   const imageId = imported.data.theme.id;
+  const disabledPreview = await first.call(METHODS.THEME_STARTUP_PREVIEW, { themeId: imageId });
+  assert.equal(disabledPreview.ok, true, JSON.stringify(disabledPreview.error));
+  assert.match(disabledPreview.data.config.mediaUrl || '', /^https:\/\/media\.backdropbuddy\.invalid\//, '未启用时预览也应使用主题缩略图');
   const enabled = await first.call(METHODS.THEME_SAVE, {
     id: imageId,
     name: '静图主题',
@@ -169,13 +183,15 @@ test('startup preview: fixed template installs inside a sandboxed child, without
   assert.equal(result.installed, true);
   assert.ok(frame.contentDocument.querySelector('#backdropbuddy-startup-layer'));
   assert.match(frame.contentDocument.querySelector('.bb-startup-name').textContent, /沙盒主题/);
+  assert.equal(frame.contentWindow.getComputedStyle(frame.contentDocument.querySelector('.bb-startup-logo')).display, 'none');
+  assert.match(frame.contentDocument.querySelector('#backdropbuddy-startup-style').textContent, /\.bb-startup\.theme-reveal \.bb-startup-bg\{animation:bb-startup-unveil/);
 
   const html = createStartupPreviewHtml({ mediaUrl: 'https://evil.example/a.png', themeName: '安全预览' });
   assert.doesNotMatch(html, /evil\.example/);
   assert.match(html, /default-src 'none'/);
 });
 
-test('startup preview: layer replays after finish instead of leaving a blank frame', (t) => {
+test('startup preview: plays once and keeps the completed frame', (t) => {
   const require = createRequire(path.join(ROOT, 'ui', 'package.json'));
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<!doctype html><body></body>', {
@@ -188,7 +204,7 @@ test('startup preview: layer replays after finish instead of leaving a blank fra
   let now = 100000;
   win.performance.now = () => now;
   win.matchMedia = () => ({ matches: false });
-  const source = startupScript({ launchId: 'preview', themeName: '重播主题' }, { preview: true });
+  const source = startupScript({ launchId: 'preview', themeName: '单次预览' }, { preview: true });
   const result = win.eval(source);
   assert.equal(result.installed, true);
   const firstLayer = win.document.querySelector('#backdropbuddy-startup-layer');
@@ -196,12 +212,14 @@ test('startup preview: layer replays after finish instead of leaving a blank fra
 
   now += 2000; // 越过 finish 里 900ms 的跳过保护
   win.__backdropBuddyStartupLayer.dispose();
-  assert.match(firstLayer.className, /bb-startup-leaving/);
+  assert.match(firstLayer.className, /bb-startup-complete/);
+  assert.doesNotMatch(firstLayer.className, /bb-startup-leaving/);
 
   return new Promise((resolve) => setTimeout(resolve, 700)).then(() => {
-    const replayed = win.document.querySelector('#backdropbuddy-startup-layer');
-    assert.ok(replayed, 'preview layer should be reinstalled after finish');
-    assert.notEqual(replayed, firstLayer);
-    assert.doesNotMatch(replayed.className, /bb-startup-leaving/);
+    const completed = win.document.querySelector('#backdropbuddy-startup-layer');
+    assert.equal(completed, firstLayer, 'preview must not recreate or replay the layer');
+    assert.match(completed.className, /bb-startup-complete/);
+    assert.equal(win.__backdropBuddyStartupLayer.status().finished, true);
+    assert.equal(win.getComputedStyle(completed.querySelector('.bb-startup-skip')).display, 'none');
   });
 });

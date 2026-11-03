@@ -96,6 +96,18 @@ test('host profile: 保存与读取往返', (t) => {
   assert.equal(loadUserProfiles(dir).length, 1);
 });
 
+test('host profile: 删除自定义配置且拒绝非法 id', async (t) => {
+  const { removeUserProfile } = await import('../../kernel/host/user-profiles.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-host-remove-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  assert.equal(saveUserProfile(dir, GOOD).ok, true);
+  assert.equal(removeUserProfile(dir, '../outside').ok, false);
+  assert.equal(fs.existsSync(path.join(dir, 'my-host.json')), true);
+  assert.equal(removeUserProfile(dir, GOOD.id).ok, true);
+  assert.equal(fs.existsSync(path.join(dir, 'my-host.json')), false);
+  assert.equal(loadUserProfiles(dir).length, 0);
+});
+
 test('generic profile: 选择器白名单与 CSS 映射', () => {
   const { profile } = validateProfile(GOOD);
   const list = cssSelectorsFor(profile);

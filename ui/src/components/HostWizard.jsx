@@ -52,7 +52,7 @@ function autoVarMap(bgVar, fgVar, vars) {
   return map;
 }
 
-export default function HostWizard({ bridge, native, onSaved }) {
+export default function HostWizard({ bridge, native, onSaved, onHostsChanged }) {
   const [step, setStep] = useState(0);
   const [exe, setExe] = useState('');
   const [port, setPort] = useState('9222');
@@ -81,6 +81,8 @@ export default function HostWizard({ bridge, native, onSaved }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [hosts, setHosts] = useState([]);
+  const [removeConfirm, setRemoveConfirm] = useState('');
+  const [removing, setRemoving] = useState('');
   const poller = useRef(0);
 
   const call = useCallback(async (method, params, timeout) => {
@@ -103,6 +105,26 @@ export default function HostWizard({ bridge, native, onSaved }) {
       setHosts(Array.isArray(data?.hosts) ? data.hosts : []);
     } catch { /* 列表失败不影响向导 */ }
   }, [call]);
+
+  const removeHost = useCallback(async (host) => {
+    if (removeConfirm !== host.id) {
+      setRemoveConfirm(host.id);
+      return;
+    }
+    setRemoving(host.id);
+    setError('');
+    try {
+      const data = await call('host.profile.remove', { id: host.id }, 90000);
+      const nextHosts = Array.isArray(data?.hosts) ? data.hosts : [];
+      setHosts(nextHosts);
+      setRemoveConfirm('');
+      if (onHostsChanged) onHostsChanged(nextHosts, data?.active || null);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setRemoving('');
+    }
+  }, [call, onHostsChanged, removeConfirm]);
 
   useEffect(() => { if (native) refreshHosts(); }, [native, refreshHosts]);
 
@@ -700,6 +722,19 @@ export default function HostWizard({ bridge, native, onSaved }) {
             {hosts.map((host) => (
               <span key={host.id} className={`wchip${host.source === 'user' ? ' on' : ''}`}>
                 {host.name}{host.port ? ` · ${host.port}` : ''}{host.source === 'user' ? ' · 自建' : ''}
+                {host.source === 'user' ? (
+                  <button
+                    type="button"
+                    className={`wchip-remove${removeConfirm === host.id ? ' confirm' : ''}`}
+                    disabled={!!removing}
+                    onClick={() => removeHost(host)}
+                    aria-label={`${removeConfirm === host.id ? '确认删除' : '删除'}宿主 ${host.name}`}
+                    title={removeConfirm === host.id ? '再次点击确认删除' : '删除宿主'}
+                    data-testid={`host-remove-${host.id}`}
+                  >
+                    {removing === host.id ? '…' : (removeConfirm === host.id ? '确认' : '×')}
+                  </button>
+                ) : null}
               </span>
             ))}
           </div>

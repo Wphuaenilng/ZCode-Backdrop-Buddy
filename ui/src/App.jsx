@@ -1259,7 +1259,14 @@ export default function App() {
         ) : null}
 
         {view === 'host' ? (
-          <HostWizard bridge={bridge} native={native} />
+          <HostWizard
+            bridge={bridge}
+            native={native}
+            onHostsChanged={(nextHosts, active) => {
+              setHostList(nextHosts);
+              if (active) setActiveHost(active);
+            }}
+          />
         ) : null}
 
         {view === 'settings' && settingsTheme ? (

@@ -218,6 +218,16 @@ test('host.use：切换宿主并按宿主记忆自动补壁纸', async (t) => {
     assert.equal(unknown.ok, false);
     assert.match(unknown.error.message, /unknown host|未知宿主/);
 
+    const removed = await call(METHODS.HOST_PROFILE_REMOVE, { id: 'host-b' });
+    assert.equal(removed.ok, true, JSON.stringify(removed.error || {}));
+    assert.equal(removed.data.active, 'host-a');
+    assert.equal(removed.data.hosts.some((host) => host.id === 'host-b'), false);
+    assert.equal(fs.existsSync(path.join(hostsDir, 'host-b.json')), false);
+    assert.equal(kernel.ctx.config.get().hostThemes['host-b'], undefined);
+    assert.equal(kernel.ctx.config.get().hostThemes['host-a'], themeA);
+    const removeBuiltin = await call(METHODS.HOST_PROFILE_REMOVE, { id: 'zcode' });
+    assert.equal(removeBuiltin.ok, false);
+
     const status = await call(METHODS.STATUS_GET);
     assert.equal(status.data.hostId, 'host-a');
   } finally {

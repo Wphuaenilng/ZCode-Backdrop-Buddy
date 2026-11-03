@@ -120,7 +120,6 @@ export function installStartupLayer(rawOptions) {
   let holdTimer = 0;
   let deadlineTimer = 0;
   let cleanupTimer = 0;
-  let replayTimer = 0;
 
   function report(stage, extra) {
     try {
@@ -196,7 +195,6 @@ export function installStartupLayer(rawOptions) {
     clearTimeout(holdTimer);
     clearTimeout(deadlineTimer);
     clearTimeout(cleanupTimer);
-    clearTimeout(replayTimer);
     if (observer) observer.disconnect();
     window.removeEventListener('keydown', onKey, true);
     if (layer) layer.remove();
@@ -214,26 +212,21 @@ export function installStartupLayer(rawOptions) {
     clearInterval(readyTimer);
     clearTimeout(holdTimer);
     clearTimeout(deadlineTimer);
+    report('finishing', { reason, elapsedMs: Math.round(performance.now() - startedAt), ...stateSnapshot() });
+    if (options.preview) {
+      // 预览只播放一次，并保留最终画面；关闭后重新打开才会重新播放。
+      if (layer) {
+        layer.classList.add('bb-startup-complete');
+        layer.setAttribute('aria-label', '启动动画预览已完成');
+      }
+      window.removeEventListener('keydown', onKey, true);
+      return;
+    }
     if (layer) {
       layer.classList.add('bb-startup-leaving');
       layer.style.transitionDuration = `${fadeMs}ms`;
     }
-    report('finishing', { reason, elapsedMs: Math.round(performance.now() - startedAt), ...stateSnapshot() });
-    // The preview iframe has no host to signal readiness; loop the animation
-    // there instead of tearing the layer down and leaving a blank page.
-    if (options.preview) replayTimer = setTimeout(replay, fadeMs + 320);
-    else cleanupTimer = setTimeout(remove, fadeMs);
-  }
-
-  function replay() {
-    if (state.removed) return;
-    if (layer) layer.remove();
-    state.installed = false;
-    state.finished = false;
-    state.reason = null;
-    startedAt = performance.now();
-    readyAt = 0;
-    installDom();
+    cleanupTimer = setTimeout(remove, fadeMs);
   }
 
   function onKey(event) {
@@ -265,16 +258,20 @@ export function installStartupLayer(rawOptions) {
       .bb-startup-line::after{content:"";display:block;width:48%;height:100%;border-radius:inherit;background:var(--bb-startup-accent);animation:bb-startup-sweep .9s ease-in-out both}
       .bb-startup-skip{position:absolute;right:24px;bottom:22px;padding:8px 13px;border:1px solid rgba(255,255,255,.22);border-radius:999px;background:rgba(12,16,20,.34);color:rgba(255,255,255,.82);font:12px "Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;-webkit-app-region:no-drag}
       .bb-startup-skip:focus-visible{outline:2px solid #fff;outline-offset:3px}
-      .bb-startup.theme-reveal .bb-startup-bg{animation:bb-startup-reveal 3.5s ease-out both}
-      .bb-startup.theme-reveal .bb-startup-logo{width:72px;height:72px;border-radius:20px;animation-duration:.5s}
-      .bb-startup.theme-reveal .bb-startup-logo svg{width:42px;height:36px}
-      .bb-startup.theme-reveal .bb-startup-name{font-size:20px;letter-spacing:.1em}
+      .bb-startup.theme-reveal .bb-startup-bg{animation:bb-startup-unveil 1.1s cubic-bezier(.65,0,.35,1) both}
+      .bb-startup.theme-reveal .bb-startup-logo{display:none}
+      .bb-startup.theme-reveal .bb-startup-center{gap:20px}
+      .bb-startup.theme-reveal .bb-startup-name{max-width:82vw;font-size:clamp(26px,4vw,42px);font-weight:600;letter-spacing:.12em;animation:bb-startup-title .8s .28s cubic-bezier(.22,1,.36,1) both}
+      .bb-startup.theme-reveal .bb-startup-line{width:176px;height:3px}
+      .bb-startup-complete .bb-startup-line::after{width:100%;animation:none;transform:none}
+      .bb-startup-complete .bb-startup-skip{display:none}
       .bb-startup-leaving{opacity:0;pointer-events:none}
       .bb-startup.reduced *,.bb-startup.reduced *::before,.bb-startup.reduced *::after{animation:none!important;transition:none!important}
       .bb-startup.reduced .bb-startup-bg{transform:none}
       @keyframes bb-startup-pop{0%{opacity:0;transform:scale(.72)}38%{opacity:1;transform:scale(1.045)}58%{transform:scale(.985)}76%{transform:scale(1.008)}100%{opacity:1;transform:scale(1)}}
       @keyframes bb-startup-sweep{0%{transform:translateX(-110%)}100%{transform:translateX(220%)}}
-      @keyframes bb-startup-reveal{0%{transform:scale(1.02)}100%{transform:scale(1.09)}}
+      @keyframes bb-startup-unveil{0%{clip-path:inset(0 100% 0 0);transform:scale(1.08)}100%{clip-path:inset(0);transform:scale(1.02)}}
+      @keyframes bb-startup-title{0%{opacity:0;transform:translateY(18px)}100%{opacity:1;transform:translateY(0)}}
     `;
       document.documentElement.appendChild(style);
     }
