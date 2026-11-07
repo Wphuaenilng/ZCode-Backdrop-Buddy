@@ -34,7 +34,10 @@ export const WORKBUDDY_SKIN_SELECTORS = [
   '.teams-container', '.conversation-shell', '.conversation-list', '.cr-input-container',
   '.teams-grid-scroll-content', '._gridView_11lon_9', '._gridViewItem_11lon_15',
   '.cr-self-bubble', 'body.dark .cr-self-bubble',
+  '.cr-input-toolbar__right',
   '.vscode-dark .conversation-input__box .cr-input-toolbar__right',
+  '.cr-context-usage',
+  '.cr-context-usage svg',
   '[data-theme="dark"] .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
   'html.cb-dark .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
   'body.vscode-dark .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
@@ -226,10 +229,21 @@ export function buildWorkbuddyThemeCss({ params, media, tokens, tokensByMode, mo
       safe: 'var(--bb-safe)'
     }),
     '.teams-container { position: relative; z-index: 1; text-shadow: var(--bb-text-shadow); }',
-    // 宿主样式表在深色模式写死的两处实底（CDP matched-styles 实测）：输入工具条 #1f1f1f、
-    // 行业模板芯片 #2e2e2e——同选择器 + !important 用变量值中和，跟随壁纸配色
+    // 工具条右区（加载圈/模型选择/发送）落在玻璃输入容器上：背景安全透明，
+    // 深色模式宿主写死的 #1f1f1f 一并中和
+    '.cr-input-toolbar__right {',
+    '  background: transparent !important;',
+    '}',
     '.vscode-dark .conversation-input__box .cr-input-toolbar__right {',
-    '  background: var(--cr-bg-elevated) !important;',
+    '  background: transparent !important;',
+    '}',
+    // 加载圈（上下文用量环）用主题色，其余按钮保持原生；
+    // svg 上有宿主自己的直接 color 规则，必须点名到 svg 才能压过继承
+    '.cr-context-usage {',
+    '  color: var(--cr-text-link) !important;',
+    '}',
+    '.cr-context-usage svg {',
+    '  color: var(--cr-text-link) !important;',
     '}',
     // 输入容器阴影在壁纸上发闷（用户反馈）：变量被子树内的声明覆盖过一次，
     // 直接在元素上置空最稳
