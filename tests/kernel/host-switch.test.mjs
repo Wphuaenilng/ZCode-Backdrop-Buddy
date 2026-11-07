@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createKernel } from '../../kernel/app/kernel.mjs';
+import { matchInjectedCss } from './helpers/fake-host.mjs';
 import { createLogger } from '../../kernel/util/logger.mjs';
 import { createGenericProfile } from '../../kernel/host/generic.mjs';
 import { createHostAdapter } from '../../kernel/host/adapter.mjs';
@@ -82,9 +83,9 @@ function fakeSessionFor(state) {
     async evaluate(script) {
       if (script.includes('const THEME_ID = ')) {
         const themeId = script.match(/const THEME_ID = ("[^"]*")/);
-        const css = script.match(/const CSS = ("(?:[^"\\]|\\.)*")/);
+        const css = matchInjectedCss(script);
         state.themeId = themeId ? JSON.parse(themeId[1]) : null;
-        state.css = css ? JSON.parse(css[1]) : '';
+        state.css = css === null ? '' : css;
         state.paused = false;
         return true;
       }

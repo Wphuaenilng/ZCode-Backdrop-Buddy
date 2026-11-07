@@ -104,6 +104,31 @@ export function validateProfile(raw) {
   }
 
   const textSelectors = selectorList(input.textSelectors, 'textSelectors', errors);
+
+  // 启动宿主时的附加环境变量（如 WorkBuddy 的 WORKBUDDY_REMOTE_DEBUGGING_PORT）。
+  // 值支持 {{port}} 占位符，adapter 重启时替换成 profile.port。
+  let launchEnv = null;
+  if (input.launchEnv != null) {
+    if (typeof input.launchEnv !== 'object' || Array.isArray(input.launchEnv)) {
+      errors.push('launchEnv 必须是对象');
+    } else {
+      const entries = Object.entries(input.launchEnv);
+      if (entries.length > 10) errors.push('launchEnv 最多 10 项');
+      launchEnv = {};
+      for (const [key, value] of entries) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(key)) errors.push(`launchEnv 变量名非法：${String(key).slice(0, 40)}`);
+        else if (!isString(value, 1, 300)) errors.push(`launchEnv 值非法：${key}`);
+        else launchEnv[key] = value;
+      }
+      if (Object.keys(launchEnv).length === 0) launchEnv = null;
+    }
+  }
+
+  // 原生皮肤契约映射：宿主有官方皮肤变量族时，按手调映射出原生质感（当前支持 workbuddy）
+  if (input.skin != null && input.skin !== 'workbuddy') {
+    errors.push(`skin 暂不支持：${String(input.skin).slice(0, 40)}`);
+  }
+
   const skipSelector = input.skipSelector == null || input.skipSelector === '' ? null
     : (isString(input.skipSelector, 1, 100) && SELECTOR_RE.test(input.skipSelector) && !/[{}]/.test(input.skipSelector)
       ? input.skipSelector
@@ -115,6 +140,7 @@ export function validateProfile(raw) {
     name: input.name,
     exe: input.exe,
     port,
+    launchEnv: launchEnv && Object.keys(launchEnv).length ? launchEnv : null,
     rendererPattern: input.rendererPattern,
     readySelector: input.readySelector,
     readyClass: input.readyClass || null,
@@ -132,6 +158,7 @@ export function validateProfile(raw) {
     textSelectors,
     skipSelector,
     varMap,
+    skin: input.skin === 'workbuddy' ? 'workbuddy' : null,
     mediaDelivery: input.mediaDelivery === 'blob' ? 'blob' : 'file',
     minVersion: input.minVersion || null,
     createdAt: input.createdAt || new Date().toISOString()

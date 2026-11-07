@@ -11,7 +11,8 @@ try {
   if (-not (Test-Path -LiteralPath $contentPath)) { throw "content file not found: $contentPath" }
   $bytes = [System.IO.File]::ReadAllBytes($contentPath)
   if ($bytes.Length -eq 0) { throw 'content is empty' }
-  if ($bytes.Length -gt 262144) { throw "content exceeds 262144 bytes: $($bytes.Length)" }
+  # 全量皮肤契约（WorkBuddy 648+ 变量明暗两套）约 400KB；护栏放到 1MB
+  if ($bytes.Length -gt 1048576) { throw "content exceeds 1048576 bytes: $($bytes.Length)" }
 
   $target = [System.IO.Path]::GetFullPath($Dest)
   $directory = [System.IO.Path]::GetDirectoryName($target)

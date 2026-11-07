@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][string]$Path,
-  [int]$MaxBytes = 262144,
+  [int]$MaxBytes = 1048576,
   [string]$ExtraSelectors = ''
 )
 

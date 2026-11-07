@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createKernel } from '../../kernel/app/kernel.mjs';
+import { matchInjectedCss } from './helpers/fake-host.mjs';
 import { createLogger } from '../../kernel/util/logger.mjs';
 import { ZCODE_PROFILE } from '../../kernel/host/zcode.mjs';
 import { createGenericProfile } from '../../kernel/host/generic.mjs';
@@ -82,9 +83,9 @@ function fakeHostPage() {
     async evaluate(script) {
       if (script.includes('const THEME_ID = ')) {
         const themeId = script.match(/const THEME_ID = ("[^"]*")/);
-        const css = script.match(/const CSS = ("(?:[^"\\]|\\.)*")/);
+        const css = matchInjectedCss(script);
         page.themeId = themeId ? JSON.parse(themeId[1]) : null;
-        page.css = css ? JSON.parse(css[1]) : '';
+        page.css = css === null ? '' : css;
         page.paused = false;
         return true;
       }
@@ -191,8 +192,8 @@ test('adapter: CSP 不给 file: 的宿主走页面内建 blob 交付', async (t)
         return url;
       }
       if (script.includes('const THEME_ID = ')) {
-        const css = script.match(/const CSS = ("(?:[^"\\]|\\.)*")/);
-        injected.css = css ? JSON.parse(css[1]) : '';
+        const css = matchInjectedCss(script);
+        injected.css = css === null ? '' : css;
         return true;
       }
       if (script.includes("removeAttribute('src')") || script.includes("removeAttribute('data-bb-theme')")) {

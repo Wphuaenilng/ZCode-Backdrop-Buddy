@@ -67,7 +67,11 @@ export function snapshotExpression(p) {
 
 export function injectionExpression(p, { css, themeId, media }) {
   return `(async () => {
-    const CSS = ${JSON.stringify(css)};
+    // 大 CSS（全量皮肤契约）塞不进单次 evaluate：adapter 先分块写入 window.__bbCssChunks
+    // 再置 css 为空串，这里取出并立刻清空——注入失败回滚后也不残留旧块污染下一次注入
+    const PENDING_CSS = window.__bbCssChunks;
+    window.__bbCssChunks = null;
+    const CSS = Array.isArray(PENDING_CSS) ? PENDING_CSS.join('') : ${JSON.stringify(css)};
     const THEME_ID = ${JSON.stringify(themeId)};
     const MEDIA = ${JSON.stringify(media || null)};
     const STYLE_ID = '${p.styleId}';

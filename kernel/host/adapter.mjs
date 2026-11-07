@@ -7,6 +7,7 @@ import { runPowerShellJson } from '../platform/exec.mjs';
 import { openCdp } from './detect.mjs';
 import { hashFile } from '../media/hashing.mjs';
 import { ZCODE_PROFILE } from './zcode.mjs';
+import { harvestSkinVariables, surfaceProbeExpression, mergeSurfaceSelectors, buildSkinContract, skinContractCachePath, readSkinContractCache, writeSkinContractCache } from './skin-harvest.mjs';
 import { readJson } from '../store/json-file.mjs';
 import { playHostStartupAnimation } from './startup-animation.mjs';
 import { normalizeStartupTemplate, STARTUP_LIMITS } from './startup-template.mjs';
@@ -21,6 +22,25 @@ const MEDIA_MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
   '.mp4': 'video/mp4', '.webm': 'video/webm'
 };
+
+// 大 CSS 走分块投递：Runtime.evaluate 的表达式有 256KB 上限，全量皮肤契约塞不下
+async function deliverCssChunks(session, css, logger) {
+  await session.evaluate('(() => { window.__bbCssChunks = []; })()');
+  const chunkSize = 60000;
+  for (let offset = 0; offset < css.length; offset += chunkSize) {
+    await session.evaluate(`(() => { window.__bbCssChunks.push(${JSON.stringify(css.slice(offset, offset + chunkSize))}); })()`,
+      { timeoutMs: 60000 });
+  }
+  logger?.info('css chunk delivery', { bytes: css.length, chunks: Math.ceil(css.length / chunkSize) });
+}
+
+async function injectCss(session, css, themeId, media, logger, injectionExpression) {
+  if (css.length > 180000) {
+    await deliverCssChunks(session, css, logger);
+    return session.evaluate(injectionExpression({ css: '', themeId, media }), { timeoutMs: 12000 });
+  }
+  return session.evaluate(injectionExpression({ css, themeId, media }), { timeoutMs: 12000 });
+}
 
 async function createPageBlobUrl(session, file, logger) {
   const bytes = fs.readFileSync(file);
@@ -359,6 +379,14 @@ export function createHostAdapter({
     try {
       const args = ['-ExePath', profile.exe || '', '-Port', String(profile.port)];
       if (profile.appxPackage) args.push('-AppxPackage', profile.appxPackage, '-ExeName', profile.appxExe || 'ChatGPT.exe');
+      if (profile.launchEnv && Object.keys(profile.launchEnv).length) {
+        // 环境变量走 base64 JSON：裸 JSON 里的引号会被 PowerShell -File 的参数解析吃掉。
+        const env = {};
+        for (const [key, value] of Object.entries(profile.launchEnv)) {
+          env[key] = String(value).replaceAll('{{port}}', String(profile.port));
+        }
+        args.push('-EnvJsonB64', Buffer.from(JSON.stringify(env), 'utf8').toString('base64'));
+      }
       if (startupRequest) args.push('-StartupConfig', startupRequest.configPath, '-StartupResult', startupRequest.resultPath);
       result = restartHost
         ? await restartHost({ profile, appRoot, args, startup: startupRequest ? { template: startupRequest.template } : null })
@@ -521,9 +549,13 @@ export function createHostAdapter({
     }
   }
 
-  async function validateCss(cssPath) {
+  async function validateCss(cssPath, extraSelectors = []) {
     try {
-      const extra = Array.isArray(profile.cssSelectors) ? profile.cssSelectors.join('|') : '';
+      const merged = [
+        ...(Array.isArray(profile.cssSelectors) ? profile.cssSelectors : []),
+        ...(Array.isArray(extraSelectors) ? extraSelectors : [])
+      ];
+      const extra = merged.join('|');
       const args = ['-Path', cssPath];
       if (extra) args.push('-ExtraSelectors', extra);
       return await runPowerShellJson('theme/validate-css.ps1', {
@@ -643,9 +675,68 @@ export function createHostAdapter({
       light: tokenBundle.light || tokens,
       dark: tokenBundle.dark || tokens
     };
-    const css = buildThemeCss({ params: merged, media, tokens, tokensByMode, mode });
+
+    // 原生皮肤契约（workbuddy 这类有官方变量族的宿主）：收割宿主全量变量再生成 CSS，
+    // 覆盖面与官方皮肤同源；缓存只存 accent 无关的解析结果（按宿主版本键、TTL 24h），
+    // 重映射现算——换主题/换 accent 不重新拉样式表。收割失败只降级为精调映射
+    let contract = null;
+    let discoveredSurfaces = null;
+    if (profile.skin) {
+      const cacheFile = skinContractCachePath(paths, profile.id, status.version);
+      const cached = readSkinContractCache(cacheFile);
+      if (cached) {
+        contract = buildSkinContract(cached.parsed, merged.accent, { changedOnly: true });
+        logger?.info('skin contract cache hit', {
+          host: profile.id,
+          lightVars: contract && contract.light ? Object.keys(contract.light).length : 0,
+          darkVars: contract && contract.dark ? Object.keys(contract.dark).length : 0,
+          savedAt: cached.savedAt
+        });
+      }
+      // 表面探测每次都跑（一次 evaluate 很便宜）；样式表全文传输才值得走缓存。
+      // 宿主更新改了哈希类时，探测结果自动跟上
+      try {
+        const session = await openSession(status);
+        let parsed = cached ? cached.parsed : null;
+        try {
+          if (!parsed) {
+            parsed = await harvestSkinVariables(session);
+            contract = buildSkinContract(parsed, merged.accent, { changedOnly: true });
+          }
+          discoveredSurfaces = await session.evaluate(
+            surfaceProbeExpression(profile.rootSelector, '.cr-input-container'),
+            { timeoutMs: 12000 }
+          );
+        } finally {
+          session.close();
+        }
+        // 表面跨轮合并：已应用的页面全透明，本轮探针可能为空；
+        // 缓存里攒的 + 上一轮 runtime state 里的 + 本轮发现的，一起保留
+        const previousSurfaces = state && Array.isArray(state.surfaces) ? state.surfaces : [];
+        const knownSurfaces = mergeSurfaceSelectors(previousSurfaces, cached ? cached.surfaces : [], { cap: 12 });
+        const mergedSurfaces = mergeSurfaceSelectors(knownSurfaces, discoveredSurfaces, { cap: 12 });
+        discoveredSurfaces = mergedSurfaces;
+        writeSkinContractCache(cacheFile, parsed, mergedSurfaces);
+        if (!cached) {
+          logger?.info('skin contract harvested', {
+            host: profile.id,
+            lightVars: contract && contract.light ? Object.keys(contract.light).length : 0,
+            darkVars: contract && contract.dark ? Object.keys(contract.dark).length : 0
+          });
+        }
+        logger?.info('skin surfaces probed', {
+          host: profile.id,
+          found: Array.isArray(discoveredSurfaces) ? discoveredSurfaces.length : 0,
+          kept: mergedSurfaces.length
+        });
+      } catch (error) {
+        logger?.warn('skin contract harvest failed', { message: error.message });
+      }
+    }
+
+    const css = buildThemeCss({ params: merged, media, tokens, tokensByMode, mode, contract, discoveredSurfaces });
     const cssFile = await writeCss(css, theme.id);
-    const validation = await validateCss(cssFile.path);
+    const validation = await validateCss(cssFile.path, discoveredSurfaces);
 
     const reuseBaseline = !!(state && state.baseline && state.targetId === status.target.id);
     const baselineMode = reuseBaseline && state.baselineMode ? state.baselineMode : mode;
@@ -696,11 +787,7 @@ export function createHostAdapter({
         // blob 交付：CSS 里写的是 file:// 地址（白名单按它校验），注入前换成该窗口的 blob: 地址
         const delivered = await deliverWindowMedia(session, media, logger);
         const windowCss = delivered.css ? applyMediaSubstitution(css, delivered) : css;
-        await session.evaluate(injectionExpression({
-          css: windowCss,
-          themeId: theme.id,
-          media: delivered.media
-        }), { timeoutMs: 12000 });
+        await injectCss(session, windowCss, theme.id, delivered.media, logger, injectionExpression);
         return session.evaluate(verifyExpression());
       });
     } catch (error) {
@@ -740,6 +827,8 @@ export function createHostAdapter({
       params: merged,
       tokens,
       tokensByMode,
+      contract,
+      surfaces: Array.isArray(discoveredSurfaces) ? discoveredSurfaces : null,
       baseline,
       baselineMode,
       hostHash: hash,
@@ -1047,17 +1136,15 @@ export function createHostAdapter({
         media,
         tokens: state.tokens,
         tokensByMode: state.tokensByMode || { light: state.tokens, dark: state.tokens },
-        mode: entryMode
+        mode: entryMode,
+        contract: state.contract,
+        discoveredSurfaces: state.surfaces
       });
       const session = await openSession(entry.target);
       try {
         const delivered = await deliverWindowMedia(session, media, logger);
         const windowCss = delivered.css ? applyMediaSubstitution(css, delivered) : css;
-        await session.evaluate(injectionExpression({
-          css: windowCss,
-          themeId: state.theme.id,
-          media: delivered.media
-        }), { timeoutMs: 12000 });
+        await injectCss(session, windowCss, state.theme.id, delivered.media, logger, injectionExpression);
         const verified = await session.evaluate(verifyExpression());
         const ok = verificationOf(verified, {
           themeId: state.theme.id,

@@ -25,6 +25,27 @@ export function request(id, method, params = {}) {
   return { v: PROTOCOL_VERSION, id, type: 'request', method, params };
 }
 
+// —— 注入表达式解析（各假宿主共用）——
+// 大 CSS 走 __bbCssChunks 分块：adapter 先 reset、逐块 push，注入表达式里 join 后置空；
+// 小 CSS 保持内联。两条路径都要能取回完整 CSS。
+export function isCssChunkReset(script) {
+  return script.includes('window.__bbCssChunks = []');
+}
+
+export function parseCssChunkPush(script) {
+  if (!script.includes('__bbCssChunks.push(')) return null;
+  const chunk = script.match(/push\(("(?:[^"\\]|\\.)*")\)/);
+  return chunk ? JSON.parse(chunk[1]) : null;
+}
+
+export function matchInjectedCss(script) {
+  // 兼容 chunk 回退与变量中转两种模板形态（对中间变量名宽容）
+  const fallback = script.match(/const CSS = Array\.isArray\(\w+\) \? \w+\.join\(''\) : ("(?:[^"\\]|\\.)*");/);
+  if (fallback) return JSON.parse(fallback[1]);
+  const inline = script.match(/const CSS = ("(?:[^"\\]|\\.)*")/);
+  return inline ? JSON.parse(inline[1]) : null;
+}
+
 // 一个会开多个渲染窗口的假宿主：每个窗口各自记录注入状态与明暗模式
 export function fakeWorld() {
   const targets = new Map();
@@ -83,13 +104,22 @@ export function fakeWorld() {
       async evaluate(script) {
         if (win.reject && script.includes('const THEME_ID = ')) throw new Error('该窗口拒绝注入');
 
+        // 大 CSS 分块投递：先清空、再逐块 push，注入表达式里拼回
+        if (isCssChunkReset(script)) { win.cssChunks = []; return true; }
+        const pushed = parseCssChunkPush(script);
+        if (pushed !== null) {
+          win.cssChunks = win.cssChunks || [];
+          win.cssChunks.push(pushed);
+          return true;
+        }
+
         if (script.includes('const THEME_ID = ')) {
           const themeId = script.match(/const THEME_ID = ("[^"]*")/);
           const media = script.match(/const MEDIA = (null|\{[^}]*\});/);
-          const css = script.match(/const CSS = ("(?:[^"\\]|\\.)*")/);
           win.themeId = themeId ? JSON.parse(themeId[1]) : null;
           win.media = media && media[1] !== 'null' ? JSON.parse(media[1]) : null;
-          win.css = css ? JSON.parse(css[1]) : '';
+          const css = matchInjectedCss(script);
+          win.css = css === null ? (win.cssChunks || []).join('') : css;
           win.paused = false;
           return true;
         }

@@ -9,6 +9,7 @@ import {
   snapshotExpression as genericSnapshot,
   verifyExpression as genericVerify
 } from './expressions.mjs';
+import { buildWorkbuddyThemeCss, workbuddyExpressions, WORKBUDDY_SKIN_SELECTORS } from './workbuddy-skin.mjs';
 
 // 向导生成的宿主 profile 是纯数据，由这里的通用引擎翻译成可注入的 CSS 与表达式。
 export const TOKEN_NAMES = Object.freeze([
@@ -185,6 +186,26 @@ function versionParts(value) {
 }
 
 export function createGenericProfile(data) {
+  // 原生皮肤契约映射：宿主有官方变量族时走手调映射（workbuddy-skin.mjs），
+  // 其余生命周期表达式与通用引擎完全同构
+  const skinMode = data.skin === 'workbuddy';
+  const skinExpressions = skinMode ? workbuddyExpressions(data) : null;
+  const buildCss = skinMode
+    ? (args) => buildWorkbuddyThemeCss({
+      ...args,
+      surfaceSelectors: data.surfaceSelectors,
+      glassSelectors: data.glassSelectors
+    })
+    : (args) => buildGenericThemeCss(data, args);
+  const cssSelectors = skinMode
+    ? [...new Set([
+      ...cssSelectorsFor(data),
+      ...WORKBUDDY_SKIN_SELECTORS,
+      ...(Array.isArray(data.glassSelectors) ? data.glassSelectors : []),
+      ...(Array.isArray(data.glassSelectors) ? data.glassSelectors.map((sel) => `body.dark ${sel}`) : [])
+    ])]
+    : cssSelectorsFor(data);
+
   const isSupportedVersion = (value) => {
     if (!data.minVersion) return { ok: true, version: value || null };
     const parts = versionParts(value);
@@ -204,6 +225,7 @@ export function createGenericProfile(data) {
     exe: data.exe,
     hostRoot: data.hostRoot || null,
     port: data.port,
+    launchEnv: data.launchEnv || null,
     rendererPattern: new RegExp(data.rendererPattern),
     readySelector: data.readySelector,
     readyClass: data.readyClass || null,
@@ -221,19 +243,32 @@ export function createGenericProfile(data) {
     textSelectors: Array.isArray(data.textSelectors) ? data.textSelectors : [],
     skipSelector: data.skipSelector || null,
     mediaDelivery: data.mediaDelivery === 'blob' ? 'blob' : 'file',
+    skin: data.skin === 'workbuddy' ? 'workbuddy' : null,
     minVersion: data.minVersion || null,
     hashHostFiles: false,
-    cssSelectors: cssSelectorsFor(data),
+    cssSelectors,
     versionExpression: `(document.title.match(/([0-9]+\\.[0-9]+\\.[0-9]+)/) || [])[1] || null`,
-    buildThemeCss: (args) => buildGenericThemeCss(data, args),
+    buildThemeCss: buildCss,
     normalizeThemeParams,
     isSupportedVersion,
-    fingerprintExpression: () => genericFingerprint({ ...data, ...pickExpressionFields(data) }),
-    snapshotExpression: () => genericSnapshot({ ...data, ...pickExpressionFields(data) }),
-    injectionExpression: (args) => genericInjection({ ...data, ...pickExpressionFields(data) }, args),
-    verifyExpression: () => genericVerify({ ...data, ...pickExpressionFields(data) }),
-    pauseExpression: (paused) => genericPause({ ...data, ...pickExpressionFields(data) }, paused),
-    removeExpression: () => genericRemove({ ...data, ...pickExpressionFields(data) })
+    fingerprintExpression: () => skinExpressions
+      ? skinExpressions.fingerprintExpression()
+      : genericFingerprint({ ...data, ...pickExpressionFields(data) }),
+    snapshotExpression: () => skinExpressions
+      ? skinExpressions.snapshotExpression()
+      : genericSnapshot({ ...data, ...pickExpressionFields(data) }),
+    injectionExpression: (args) => skinExpressions
+      ? skinExpressions.injectionExpression(args)
+      : genericInjection({ ...data, ...pickExpressionFields(data) }, args),
+    verifyExpression: () => skinExpressions
+      ? skinExpressions.verifyExpression()
+      : genericVerify({ ...data, ...pickExpressionFields(data) }),
+    pauseExpression: (paused) => skinExpressions
+      ? skinExpressions.pauseExpression(paused)
+      : genericPause({ ...data, ...pickExpressionFields(data) }, paused),
+    removeExpression: () => skinExpressions
+      ? skinExpressions.removeExpression()
+      : genericRemove({ ...data, ...pickExpressionFields(data) })
   };
 }
 
