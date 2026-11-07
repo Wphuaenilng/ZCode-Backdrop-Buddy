@@ -35,11 +35,12 @@ async function deliverCssChunks(session, css, logger) {
 }
 
 async function injectCss(session, css, themeId, media, logger, injectionExpression) {
+  // 生成中的宿主渲染器很忙，evaluate 排队可能远超平时；分块也放大了暴露面
   if (css.length > 180000) {
     await deliverCssChunks(session, css, logger);
-    return session.evaluate(injectionExpression({ css: '', themeId, media }), { timeoutMs: 12000 });
+    return session.evaluate(injectionExpression({ css: '', themeId, media }), { timeoutMs: 30000 });
   }
-  return session.evaluate(injectionExpression({ css, themeId, media }), { timeoutMs: 12000 });
+  return session.evaluate(injectionExpression({ css, themeId, media }), { timeoutMs: 30000 });
 }
 
 async function createPageBlobUrl(session, file, logger) {

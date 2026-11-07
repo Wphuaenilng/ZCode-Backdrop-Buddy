@@ -144,8 +144,9 @@ export function injectionExpression(p, { css, themeId, media }) {
 
     layer.dataset.kind = MEDIA ? MEDIA.kind : 'none';
     ${themedTarget(p)}.setAttribute('data-bb-theme', THEME_ID);
-    await new Promise((resolve) => setTimeout(resolve, 80));
-
+    // 不放 setTimeout 之类的稳定等待：窗口被遮挡时 Chromium 会把计时器钳制到
+    // 分钟级，注入会整体挂死。getComputedStyle 本身就会同步强制样式重算，
+    // 紧跟其后的读取拿到的是应用皮肤后的值
     const cs = getComputedStyle(${target(p)});
     const root = document.querySelector('${p.rootSelector}');
     return {
