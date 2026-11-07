@@ -35,6 +35,7 @@ export const WORKBUDDY_SKIN_SELECTORS = [
   '.teams-grid-scroll-content', '._gridView_11lon_9', '._gridViewItem_11lon_15',
   '.cr-self-bubble', 'body.dark .cr-self-bubble',
   '.cr-input-toolbar__right',
+  '.cr-input-toolbar__send button',
   '.vscode-dark .conversation-input__box .cr-input-toolbar__right',
   '.cr-context-usage',
   '.cr-context-usage svg',
@@ -149,7 +150,11 @@ function skinVars(t, p) {
     `  --cr-accent: ${p.accent} !important;`,
     `  --cr-brand-primary: ${p.accent} !important;`,
     `  --cr-button-primary-bg: ${p.accent} !important;`,
-    `  --cr-text-link: ${p.accent} !important;`
+    `  --cr-text-link: ${p.accent} !important;`,
+    // 发送/停止按钮：发送态箭头与停止态圆底都跟主题色
+    `  --cr-send-button-fill: ${p.accent} !important;`,
+    `  --cr-send-button-fill-stop: ${p.accent} !important;`,
+    `  --cr-send-button-fill-disabled: ${t.surfaceHover} !important;`
   ].join('\n');
 }
 
@@ -244,6 +249,15 @@ export function buildWorkbuddyThemeCss({ params, media, tokens, tokensByMode, mo
     '}',
     '.cr-context-usage svg {',
     '  color: var(--cr-text-link) !important;',
+    '}',
+    // 发送态箭头跟主题色（停止态圆底走上面的 --cr-send-button-fill-stop）
+    '.cr-input-toolbar__send button {',
+    '  color: var(--cr-text-link) !important;',
+    '}',
+    // 宿主在中间容器上声明了默认蓝的 --cr-text-link，继承邻近性会压过 body 级主题色；
+    // 在消费子树的根上重声明一次
+    '.cr-input-container, .cr-input-toolbar__right {',
+    `  --cr-text-link: ${p.accent} !important;`,
     '}',
     // 输入容器阴影在壁纸上发闷（用户反馈）：变量被子树内的声明覆盖过一次，
     // 直接在元素上置空最稳
