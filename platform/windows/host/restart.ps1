@@ -6,7 +6,8 @@ param(
   [string]$AppxPackage = '',
   [string]$ExeName = 'ChatGPT.exe',
   [string]$StartupConfig = '',
-  [string]$StartupResult = ''
+  [string]$StartupResult = '',
+  [string]$EnvJsonB64 = ''
 )
 
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -67,6 +68,36 @@ function Get-PortOwner([int]$Port) {
     if ($listener) { return [int]$listener.OwningProcess }
   } catch { }
   return $null
+}
+
+# 附加启动环境变量（base64 JSON，避免引号被 PowerShell 参数解析破坏）；
+# 只作用于 Start-Process 那一刻，启动完立即恢复本进程环境。
+function Read-LaunchEnv([string]$B64) {
+  if (-not $B64) { return $null }
+  try {
+    $object = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($B64)) | ConvertFrom-Json
+    $map = @{}
+    foreach ($property in $object.PSObject.Properties) {
+      if ($property.Name -match '^[A-Za-z_][A-Za-z0-9_]{0,63}$' -and $property.Value -is [string]) {
+        $map[$property.Name] = [string]$property.Value
+      }
+    }
+    if ($map.Count -gt 0) { return $map }
+  } catch { }
+  return $null
+}
+
+function Set-LaunchEnv([hashtable]$Map, [hashtable]$Backup) {
+  foreach ($name in $Map.Keys) {
+    $Backup[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, [string]$Map[$name], 'Process')
+  }
+}
+
+function Restore-LaunchEnv([hashtable]$Backup) {
+  foreach ($name in $Backup.Keys) {
+    [Environment]::SetEnvironmentVariable($name, $Backup[$name], 'Process')
+  }
 }
 
 $script:StartupInjector = $null
@@ -212,9 +243,13 @@ try {
   # IDE/agent terminals can export ELECTRON_RUN_AS_NODE=1; Electron would then run as Node and exit.
   $electronRunAsNode = $env:ELECTRON_RUN_AS_NODE
   Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+  $launchEnv = Read-LaunchEnv $EnvJsonB64
+  $envBackup = @{}
+  if ($launchEnv) { Set-LaunchEnv $launchEnv $envBackup }
   try {
     $started = Start-Process -FilePath $exe -ArgumentList "--remote-debugging-port=$Port" -WorkingDirectory (Split-Path -Parent $exe) -PassThru
   } finally {
+    if ($launchEnv) { Restore-LaunchEnv $envBackup }
     if ($null -ne $electronRunAsNode) { $env:ELECTRON_RUN_AS_NODE = $electronRunAsNode }
   }
   $launchDeadline = (Get-Date).AddMilliseconds($LaunchWaitMs)

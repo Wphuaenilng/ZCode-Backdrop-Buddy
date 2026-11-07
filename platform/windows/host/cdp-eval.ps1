@@ -1,6 +1,7 @@
 param(
   [int]$Port = 9229,
   [string]$ExpressionFile = '',
+  [string]$UrlPattern = 'out[\\/]renderer[\\/]index\.html',
   [int]$TimeoutMs = 8000
 )
 
@@ -14,7 +15,7 @@ try {
   $expression = [System.IO.File]::ReadAllText($ExpressionFile, [System.Text.Encoding]::UTF8)
   if ($expression.Length -gt 262144) { throw 'expression exceeds 256 KiB' }
 
-  $targetsRaw = (& (Join-Path $PSScriptRoot 'cdp-targets.ps1') -Port $Port | Out-String)
+  $targetsRaw = (& (Join-Path $PSScriptRoot 'cdp-targets.ps1') -Port $Port -UrlPattern $UrlPattern | Out-String)
   $targets = $targetsRaw | ConvertFrom-Json
   if (-not $targets.ok -or -not $targets.target) {
     @{ ok = $false; error = @{ code = 'HOST_TARGET_MISSING'; message = $(if ($targets.error) { $targets.error.message } else { 'renderer target missing' }) } } | ConvertTo-Json -Compress -Depth 6
