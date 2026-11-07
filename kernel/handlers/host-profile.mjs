@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { METHODS } from '../../shared/protocol/constants.mjs';
 import { METHOD_SCHEMAS } from '../schema/methods.mjs';
 import { AppError } from '../protocol/errors.mjs';
@@ -5,6 +6,8 @@ import { inspectHost, pickStart, pickPoll, pickCancel, testProfile } from '../ho
 import { saveUserProfile, validateProfile } from '../host/user-profiles.mjs';
 import { scanHosts } from '../host/autoscan.mjs';
 import { switchHost } from '../host/switch.mjs';
+import { safeSegment } from '../store/paths.mjs';
+import { readJson } from '../store/json-file.mjs';
 
 export default function register(registry, ctx) {
   const hosts = () => (ctx.hostRegistry ? ctx.hostRegistry.list() : []);
@@ -13,6 +16,17 @@ export default function register(registry, ctx) {
     hosts: hosts(),
     active: ctx.hostProfile ? ctx.hostProfile.id : null
   }));
+
+  // 读取已保存的用户 profile 原始数据（含 launchEnv/skin 这类表单不管的字段），给向导编辑用
+  registry.register(METHODS.HOST_PROFILE_GET, METHOD_SCHEMAS[METHODS.HOST_PROFILE_GET], async ({ id }) => {
+    const clean = String(id || '');
+    if (!safeSegment(clean)) throw new AppError('BAD_PARAMS', `宿主 id 不合法：${clean.slice(0, 40)}`);
+    const profile = readJson(path.join(ctx.paths.hosts, `${clean}.json`), null);
+    if (!profile || profile.id !== clean) {
+      throw new AppError('HOST_NOT_FOUND', `没有保存过宿主「${clean}」`);
+    }
+    return { profile };
+  });
 
   // 一键发现：扫本机调试端口 + 只读指纹，直接给出可保存的 profile 建议
   registry.register(METHODS.HOST_AUTOSCAN, METHOD_SCHEMAS[METHODS.HOST_AUTOSCAN], async () => {

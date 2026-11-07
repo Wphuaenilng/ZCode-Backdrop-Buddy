@@ -81,6 +81,8 @@ export default function HostWizard({ bridge, native, onSaved }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [hosts, setHosts] = useState([]);
+  // 编辑已有宿主时存的原始 profile：launchEnv/skin 这类表单不管的字段靠它原样保留
+  const [baseProfile, setBaseProfile] = useState(null);
   const poller = useRef(0);
 
   const call = useCallback(async (method, params, timeout) => {
@@ -102,6 +104,39 @@ export default function HostWizard({ bridge, native, onSaved }) {
       const data = await call('host.profile.list');
       setHosts(Array.isArray(data?.hosts) ? data.hosts : []);
     } catch { /* 列表失败不影响向导 */ }
+  }, [call]);
+
+  // 编辑已保存的宿主：拉原始 profile 预填表单，launchEnv/skin 等经 baseProfile 原样保留
+  const loadProfileForEdit = useCallback(async (item) => {
+    setError('');
+    try {
+      const data = await call('host.profile.get', { id: item.id });
+      const p = data?.profile;
+      if (!p) throw new Error('宿主配置读取失败');
+      setBaseProfile(p);
+      setHostId(p.id);
+      setName(p.name || '');
+      setExe(p.exe || '');
+      setPort(String(p.port || ''));
+      setRootSelector(p.rootSelector || '');
+      setSurfaces(Array.isArray(p.surfaceSelectors) ? p.surfaceSelectors : []);
+      setGlass(Array.isArray(p.glassSelectors) ? p.glassSelectors : []);
+      setTextSelectorInput((p.textSelectors || []).join(', '));
+      setSkipSelectorInput(p.skipSelector || '');
+      setBgVar(p.backgroundVar || '');
+      setFgVar(p.foregroundVar || '');
+      setNoVars(!p.backgroundVar);
+      setDarkCls(p.darkClass || '');
+      setDarkAttr(p.darkAttr || '');
+      setDarkAttrValue(p.darkAttr ? (p.darkAttrValue || 'dark') : 'dark');
+      setDarkTarget(p.darkTarget || 'body');
+      setMediaBlob(p.mediaDelivery === 'blob');
+      setInfo(null);
+      setManualOpen(true);
+      setStep(1);
+    } catch (failure) {
+      setError(failure.message);
+    }
   }, [call]);
 
   useEffect(() => { if (native) refreshHosts(); }, [native, refreshHosts]);
@@ -245,29 +280,35 @@ export default function HostWizard({ bridge, native, onSaved }) {
     }
   }, [call]);
 
-  const profile = useCallback(() => ({
-    id: hostId.trim(),
-    name: name.trim(),
-    exe: exe.trim(),
-    port: Number(port),
-    rendererPattern: patternFor(info?.url || ''),
-    readySelector: rootSelector,
-    rootSelector,
-    darkClass: darkCls || null,
-    darkAttr: darkAttr.trim() || null,
-    darkAttrValue: darkAttr.trim() ? (darkAttrValue.trim() || 'dark') : null,
-    darkTarget,
-    tokenTarget: (info?.vars || []).find((v) => v.name === bgVar)?.target || 'body',
-    themedTarget: darkTarget,
-    backgroundVar: noVars ? '' : bgVar,
-    foregroundVar: noVars ? '' : fgVar,
-    surfaceSelectors: surfaces,
-    glassSelectors: glass,
-    textSelectors: splitSelectors(textSelectorInput),
-    skipSelector: skipSelectorInput.trim() || null,
-    varMap: noVars ? {} : autoVarMap(bgVar, fgVar, info?.vars),
-    mediaDelivery: mediaBlob ? 'blob' : 'file'
-  }), [hostId, name, exe, port, info, rootSelector, darkCls, darkAttr, darkAttrValue, darkTarget, bgVar, fgVar, surfaces, glass, noVars, textSelectorInput, skipSelectorInput, mediaBlob]);
+  const profile = useCallback(() => {
+    // 编辑已有宿主：base 带 launchEnv/skin/createdAt 这类表单不管的字段；
+    // id 改过则 base 作废（那是另一个宿主）
+    const base = baseProfile && baseProfile.id === hostId.trim() ? baseProfile : null;
+    return {
+      ...(base || {}),
+      id: hostId.trim(),
+      name: name.trim(),
+      exe: exe.trim(),
+      port: Number(port),
+      rendererPattern: info ? patternFor(info.url) : (base?.rendererPattern || patternFor(info?.url || '')),
+      readySelector: rootSelector,
+      rootSelector,
+      darkClass: darkCls || null,
+      darkAttr: darkAttr.trim() || null,
+      darkAttrValue: darkAttr.trim() ? (darkAttrValue.trim() || 'dark') : null,
+      darkTarget,
+      tokenTarget: info ? ((info.vars || []).find((v) => v.name === bgVar)?.target || 'body') : (base?.tokenTarget || 'body'),
+      themedTarget: darkTarget,
+      backgroundVar: noVars ? '' : bgVar,
+      foregroundVar: noVars ? '' : fgVar,
+      surfaceSelectors: surfaces,
+      glassSelectors: glass,
+      textSelectors: splitSelectors(textSelectorInput),
+      skipSelector: skipSelectorInput.trim() || null,
+      varMap: noVars ? {} : (info ? autoVarMap(bgVar, fgVar, info.vars) : (base?.varMap || {})),
+      mediaDelivery: mediaBlob ? 'blob' : 'file'
+    };
+  }, [baseProfile, hostId, name, exe, port, info, rootSelector, darkCls, darkAttr, darkAttrValue, darkTarget, bgVar, fgVar, surfaces, glass, noVars, textSelectorInput, skipSelectorInput, mediaBlob]);
 
   const runTest = useCallback(async () => {
     setError('');
@@ -392,6 +433,30 @@ export default function HostWizard({ bridge, native, onSaved }) {
                   )
                 ) : null}
               </section>
+
+              {(hosts || []).some((h) => h.source === 'user') ? (
+                <section className="discover-panel">
+                  <div className="discover-heading">
+                    <div>
+                      <h3>已保存的宿主</h3>
+                      <p>改端口、选择器或重新试穿，保存后立即生效。</p>
+                    </div>
+                  </div>
+                  <div className="scan-results">
+                    {hosts.filter((h) => h.source === 'user').map((h) => (
+                      <div className="scan-card" key={h.id}>
+                        <div>
+                          <div className="scan-title">{h.name}</div>
+                          <div className="scan-meta">{h.id} · 端口 {h.port}</div>
+                        </div>
+                        <button type="button" className="btn dark" onClick={() => loadProfileForEdit(h)} data-testid={`wizard-edit-${h.id}`}>
+                          编辑
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <section className={`manual-panel${manualOpen ? ' open' : ''}`}>
                 <button type="button" className="manual-toggle" aria-expanded={manualOpen} onClick={() => setManualOpen((open) => !open)}>

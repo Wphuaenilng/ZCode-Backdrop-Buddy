@@ -31,6 +31,13 @@ export const hostProfileBody = {
   properties: { profile: { type: 'object' } }
 };
 
+export const hostProfileGet = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id'],
+  properties: { id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,31}$' } }
+};
+
 export const hostUse = {
   type: 'object',
   additionalProperties: false,

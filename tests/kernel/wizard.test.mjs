@@ -156,3 +156,51 @@ test('registry: 用户宿主会合并进列表并能解析', (t) => {
   // 配置里的 hostId 作为兜底
   assert.equal(registry.resolve({}, 'my-host').id, 'my-host');
 });
+
+// ---------- host.profile.get：向导编辑入口读回原始数据 ----------
+
+test('host.profile.get: 保存后读回原始 profile（launchEnv/skin 保留）', async (t) => {
+  const { createKernel } = await import('../../kernel/app/kernel.mjs');
+  const { createLogger } = await import('../../kernel/util/logger.mjs');
+  const { PROTOCOL_VERSION, METHODS } = await import('../../shared/protocol/constants.mjs');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-pget-'));
+  t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+
+  const kernel = await createKernel({
+    dataDir,
+    appRoot: path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..'),
+    seedLocalAssets: false,
+    logger: createLogger({ dir: path.join(dataDir, 'logs'), level: 'error' })
+  });
+  try {
+    let seq = 0;
+    const call = (method, params = {}) => kernel.handle({ v: PROTOCOL_VERSION, id: `pg-${++seq}`, type: 'request', method, params });
+    await call(METHODS.SYSTEM_HELLO);
+
+    const profile = {
+      id: 'edit-host', name: 'Edit Host', exe: 'C:\\fake\\edit.exe', port: 9340,
+      rendererPattern: '^edit://', readySelector: '.root', rootSelector: '.root',
+      surfaceSelectors: ['.root'],
+      launchEnv: { WORKBUDDY_REMOTE_DEBUGGING_PORT: '{{port}}' },
+      skin: 'workbuddy'
+    };
+    const saved = await call(METHODS.HOST_PROFILE_SAVE, { profile });
+    assert.equal(saved.ok, true, JSON.stringify(saved.error || {}));
+
+    const got = await call(METHODS.HOST_PROFILE_GET, { id: 'edit-host' });
+    assert.equal(got.ok, true, JSON.stringify(got.error || {}));
+    assert.equal(got.data.profile.id, 'edit-host');
+    assert.equal(got.data.profile.launchEnv.WORKBUDDY_REMOTE_DEBUGGING_PORT, '{{port}}');
+    assert.equal(got.data.profile.skin, 'workbuddy');
+
+    const missing = await call(METHODS.HOST_PROFILE_GET, { id: 'no-such-host' });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.error.code, 'HOST_NOT_FOUND');
+
+    const bad = await call(METHODS.HOST_PROFILE_GET, { id: '../escape' });
+    assert.equal(bad.ok, false, 'schema pattern rejects path-like id');
+  } finally {
+    await kernel.close();
+  }
+});

@@ -41,6 +41,7 @@ export const METHODS = Object.freeze({
   HOST_PICK_POLL: 'host.pick.poll',
   HOST_PICK_CANCEL: 'host.pick.cancel',
   HOST_PROFILE_LIST: 'host.profile.list',
+  HOST_PROFILE_GET: 'host.profile.get',
   HOST_PROFILE_TEST: 'host.profile.test',
   HOST_PROFILE_SAVE: 'host.profile.save',
   HOST_AUTOSCAN: 'host.autoscan',

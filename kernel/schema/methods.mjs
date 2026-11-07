@@ -5,7 +5,7 @@ import { mediaUrl } from './media.mjs';
 import { startupGet, startupUpdate } from './startup.mjs';
 import { settingsGet, settingsSet } from './settings.mjs';
 import { scheduleList, scheduleSave, scheduleRemove, scheduleTick } from './schedule.mjs';
-import { hostDetect, hostStatus, hostApply, hostRestore, hostRestart, hostPort, hostProfileBody, hostUse } from './host.mjs';
+import { hostDetect, hostStatus, hostApply, hostRestore, hostRestart, hostPort, hostProfileBody, hostProfileGet, hostUse } from './host.mjs';
 import { filePick, fileValidate } from './file.mjs';
 
 export const PROTOCOL = PROTOCOL_VERSION;
@@ -45,6 +45,7 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.HOST_PICK_POLL]: hostPort,
   [METHODS.HOST_PICK_CANCEL]: hostPort,
   [METHODS.HOST_PROFILE_LIST]: EMPTY,
+  [METHODS.HOST_PROFILE_GET]: hostProfileGet,
   [METHODS.HOST_PROFILE_TEST]: hostProfileBody,
   [METHODS.HOST_PROFILE_SAVE]: hostProfileBody,
   [METHODS.HOST_AUTOSCAN]: EMPTY,
