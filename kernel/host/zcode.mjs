@@ -259,6 +259,9 @@ export function buildThemeCss({ params, media, tokens, tokensByMode, mode = 'lig
     '}',
     'html, body { background: transparent !important; }',
     '#root { position: relative; z-index: 1; text-shadow: var(--bb-text-shadow); }',
+    // 流光加载字（透明字 + 渐变 + background-clip:text）不吃 text-shadow，
+    // 否则阴影透过透明字形糊成一片（"正在执行"/"工作中"）
+    '[class~="animated-gradient-text"], [class~="zcode-loading-label"] { text-shadow: none !important; }',
     '#backdropbuddy-backdrop {',
     '  position: fixed; inset: -16px; z-index: 0; pointer-events: none;',
     '  background-image: var(--bb-backdrop-image);',
