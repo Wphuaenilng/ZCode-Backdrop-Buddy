@@ -41,6 +41,7 @@ export const WORKBUDDY_SKIN_SELECTORS = [
   '.cr-context-usage svg',
   '[class*="_mainText_"]',
   '.cr-collapse__title',
+  '.cr-tool-head__primary',
   '[data-theme="dark"] .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
   'html.cb-dark .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
   'body.vscode-dark .industry-template-switcher__trigger--general.wb-button:not(:hover):not(:active)',
@@ -257,11 +258,14 @@ export function buildWorkbuddyThemeCss({ params, media, tokens, tokensByMode, mo
     '  color: var(--cr-text-link) !important;',
     '}',
     // 思考/加载文案是 background-clip:text 的透明流光字，深色 text-shadow 会透过
-    // 透明字形糊成一片——这类元素豁免阴影
+    // 透明字形糊成一片——这类元素豁免阴影（思考指示器/折叠标题/工具执行标题）
     '[class*="_mainText_"] {',
     '  text-shadow: none !important;',
     '}',
     '.cr-collapse__title {',
+    '  text-shadow: none !important;',
+    '}',
+    '.cr-tool-head__primary {',
     '  text-shadow: none !important;',
     '}',
     // 宿主在中间容器上声明了默认蓝的 --cr-text-link，继承邻近性会压过 body 级主题色；
