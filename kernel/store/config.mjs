@@ -10,6 +10,7 @@ const DEFAULTS = {
   schedules: [],
   scheduleState: {},
   zcodePath: null,
+  steamPath: null,
   hostId: null,
   hostThemes: {}
 };

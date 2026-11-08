@@ -1,6 +1,7 @@
 const TABS = [
   { id: 'console', label: '控制台' },
   { id: 'import', label: '导入图片' },
+  { id: 'workshop', label: 'WE 导入' },
   { id: 'settings', label: '主题设置' },
   { id: 'host', label: '接入宿主' }
 ];

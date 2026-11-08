@@ -7,6 +7,7 @@ import { settingsGet, settingsSet } from './settings.mjs';
 import { scheduleList, scheduleSave, scheduleRemove, scheduleTick } from './schedule.mjs';
 import { hostDetect, hostStatus, hostApply, hostRestore, hostRestart, hostPort, hostProfileBody, hostProfileGet, hostUse } from './host.mjs';
 import { filePick, fileValidate } from './file.mjs';
+import { workshopScan, workshopImport } from './workshop.mjs';
 
 export const PROTOCOL = PROTOCOL_VERSION;
 
@@ -53,6 +54,8 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.HOST_USE]: hostUse,
   [METHODS.FILE_PICK]: filePick,
   [METHODS.FILE_VALIDATE]: fileValidate,
+  [METHODS.WORKSHOP_SCAN]: workshopScan,
+  [METHODS.WORKSHOP_IMPORT]: workshopImport,
   [METHODS.MEDIA_URL]: mediaUrl,
   [METHODS.LOG_TAIL]: {
     type: 'object',

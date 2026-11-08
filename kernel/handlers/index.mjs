@@ -20,6 +20,7 @@ import registerFile from './file.mjs';
 import registerMedia from './media.mjs';
 import registerLog from './log.mjs';
 import registerHostProfile from './host-profile.mjs';
+import registerWorkshop from './workshop.mjs';
 
 export function registerHandlers(registry, ctx) {
   registerSystem(registry, ctx);
@@ -44,4 +45,5 @@ export function registerHandlers(registry, ctx) {
   registerMedia(registry, ctx);
   registerLog(registry, ctx);
   registerHostProfile(registry, ctx);
+  registerWorkshop(registry, ctx);
 }

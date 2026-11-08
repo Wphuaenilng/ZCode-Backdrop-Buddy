@@ -49,6 +49,8 @@ export const METHODS = Object.freeze({
   HOST_USE: 'host.use',
   FILE_PICK: 'file.pick',
   FILE_VALIDATE: 'file.validate',
+  WORKSHOP_SCAN: 'workshop.scan',
+  WORKSHOP_IMPORT: 'workshop.import',
   MEDIA_URL: 'media.url',
   LOG_TAIL: 'log.tail'
 });
@@ -72,6 +74,8 @@ export const ERRORS = Object.freeze({
   MEDIA_TOO_LARGE: 'MEDIA_TOO_LARGE',
   FILE_NOT_FOUND: 'FILE_NOT_FOUND',
   PATH_OUTSIDE_ROOT: 'PATH_OUTSIDE_ROOT',
+  WORKSHOP_ITEM_NOT_FOUND: 'WORKSHOP_ITEM_NOT_FOUND',
+  WORKSHOP_ITEM_INVALID: 'WORKSHOP_ITEM_INVALID',
   TRANSACTION_FAILED: 'TRANSACTION_FAILED',
   NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
   TIMEOUT: 'TIMEOUT',

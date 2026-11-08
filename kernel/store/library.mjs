@@ -524,7 +524,8 @@ export function createLibrary({ paths, logger, media, locks }) {
     if (requestedId) assertNewId(requestedId);
 
     return locks.run('themes', async () => {
-      const sha256 = await media.hash(sourcePath);
+      // 去重方（如 workshop 导入）可能已在事务外算过哈希：允许预传，省一次全文件读
+      const sha256 = input.sha256 || await media.hash(sourcePath);
       const tx = ThemeTransaction.begin({ stagingRoot: paths.staging, logger });
 
       try {
@@ -663,6 +664,19 @@ export function createLibrary({ paths, logger, media, locks }) {
     return readJson(paths.pointer, null);
   }
 
+  // 按媒体内容指纹找已有主题：Wallpaper Engine 导入用它做"同一视频不重复入库"。
+  // 遍历成本可接受（几十个主题 × 字符串比较），不值得为此建索引。
+  function findByMediaHash(sha256) {
+    if (!sha256) return null;
+    for (const source of ['builtin', 'user']) {
+      const root = source === 'builtin' ? paths.builtin : paths.user;
+      for (const record of loadThemes(root, source, logger)) {
+        if (record.media && record.media.sha256 === sha256) return publicRecord(record);
+      }
+    }
+    return null;
+  }
+
   return {
     init,
     list,
@@ -675,6 +689,7 @@ export function createLibrary({ paths, logger, media, locks }) {
     stats,
     previewStartup,
     findRecord,
+    findByMediaHash,
     pointerInfo
   };
 }

@@ -1,9 +1,11 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -148,11 +150,44 @@ namespace BackdropBuddy.Shell
         private void FollowOwner(Window owner)
         {
             if (!_attached || _closed) return;
-            Left = owner.Left;
-            Top = owner.Top;
-            Width = Math.Max(1, owner.ActualWidth);
-            Height = Math.Max(1, owner.ActualHeight);
+            if (owner.WindowState == WindowState.Minimized) return;
+
+            // 最大化时 WPF 的 Left/Top 仍是还原位置，而 ActualWidth/Height 已是最大化尺寸，
+            // 两者混用会让启动窗错位；统一取 Win32 真实窗口矩形，再按 DPI 换算回 DIP。
+            try
+            {
+                IntPtr handle = new WindowInteropHelper(owner).Handle;
+                if (handle == IntPtr.Zero || !GetWindowRect(handle, out RECT rect)) return;
+                var source = PresentationSource.FromVisual(owner) as HwndSource;
+                Matrix? fromDevice = source?.CompositionTarget?.TransformFromDevice;
+                double scaleX = fromDevice?.M11 ?? 1.0;
+                double scaleY = fromDevice?.M22 ?? 1.0;
+
+                Left = rect.Left * scaleX;
+                Top = rect.Top * scaleY;
+                Width = Math.Max(1, (rect.Right - rect.Left) * scaleX);
+                Height = Math.Max(1, (rect.Bottom - rect.Top) * scaleY);
+            }
+            catch
+            {
+                Left = owner.Left;
+                Top = owner.Top;
+                Width = Math.Max(1, owner.ActualWidth);
+                Height = Math.Max(1, owner.ActualHeight);
+            }
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {

@@ -10,6 +10,7 @@ BackdropBuddy 是一个 Windows 原生主题管理器，为 ZCode 桌面端换�
 - 导入图片或视频，自动生成缩略图、探测媒体信息并按需压缩
 - 应用 / 暂停 / 继续 / 重置 / 恢复原貌
 - `.bbskin` 主题包导入与导出（ZIP：`pack.json` + `theme.json` + 媒体）；「下载素材」按原格式导出主题素材，导出目标需带 `.bbskin` / `.json` 或素材扩展名
+- **从 Wallpaper Engine 导入**：「WE 导入」页扫描本机 Steam 创意工坊（App ID 431960）与 WE 本地项目，视频壁纸一键复制进「我的主题」，同一视频按内容指纹去重；场景 / 网页型仅展示不导入。全程只读本机磁盘，不联网；Steam 装在非标准位置时可用环境变量 `BACKDROPBUDDY_STEAM_PATH` 指定 Steam 根目录
 - 主题保存、删除、重命名（我的主题）；重启后保留选中主题、运行态与窗口位置
 - 可选关闭时最小化到系统托盘，皮肤继续运行；从托盘菜单退出
 - 宿主切深色 / 浅色时皮肤自己跟上，不需要重新应用
@@ -106,7 +107,7 @@ BackdropBuddy 通过 Chrome DevTools Protocol（CDP，默认端口 9229）连接
 │   ├── pointer.json   # 当前应用的主题与暂停状态
 │   └── runtime.json   # 宿主运行态（重启后继续暂停/继续/重置）
 ├── hosts\             # 接入向导生成的自定义宿主 profile（<id>.json）
-├── cache\preview\     # 预览与缩略图缓存
+├── cache\preview\     # 预览与缩略图缓存（workshop\ 存 WE 导入的工坊封面）
 ├── backup\            # 宿主样式快照
 ├── logs\              # 内核与壳日志（JSONL）
 ├── exports\           # 导出的 .bbskin / 配置

@@ -5,12 +5,14 @@ import { LineWriter } from './line-writer.mjs';
 import { createShutdown } from './shutdown.mjs';
 
 // Read-only methods never block behind a slow write (theme.apply can take seconds).
+// workshop.scan 只读磁盘（预览缓存副本除外），放行并发，扫描工坊时不卡皮肤应用。
 const READ_ONLY_METHODS = new Set([
   METHODS.STATUS_GET,
   METHODS.SYSTEM_PING,
   METHODS.LOG_TAIL,
   METHODS.HOST_STATUS,
-  METHODS.MEDIA_URL
+  METHODS.MEDIA_URL,
+  METHODS.WORKSHOP_SCAN
 ]);
 
 function errorEnvelope(code, message, id = null) {

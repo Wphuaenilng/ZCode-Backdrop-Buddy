@@ -1185,3 +1185,27 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border-radius
   .wizard-actions { align-self: stretch; justify-content: flex-end; }
   .wizard-hosts-hint { display: none; }
 }
+
+/* —— Wallpaper Engine 导入（WE 导入页）—— */
+.workshop-note { margin-top: 12px; color: var(--ink-3); font-size: 11px; }
+.workshop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; margin-top: 14px; }
+.workshop-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, .8); overflow: hidden; }
+.workshop-card.disabled { opacity: .62; }
+.workshop-thumb { position: relative; aspect-ratio: 16 / 9; background-size: cover; background-position: center; background-color: #E9EAEE; }
+.workshop-card.disabled .workshop-thumb { filter: grayscale(.85); }
+.workshop-thumb-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: #B9BDC6; }
+.workshop-type { position: absolute; left: 7px; top: 7px; padding: 2px 8px; border-radius: 999px; background: rgba(31, 32, 36, .72); color: #fff; font-size: 10px; }
+.workshop-type.off { background: rgba(93, 98, 107, .82); }
+.workshop-check { position: absolute; right: 7px; top: 7px; display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, .88); color: var(--ink-2); font-size: 10.5px; cursor: pointer; user-select: none; }
+.workshop-meta { display: flex; flex: 1; flex-direction: column; gap: 3px; padding: 9px 11px 0; }
+.workshop-title { font-size: 12.5px; font-weight: 600; word-break: break-word; }
+.workshop-sub { color: var(--ink-2); font-size: 11px; }
+.workshop-error { color: var(--red); font-size: 10.5px; word-break: break-word; }
+.workshop-action { display: flex; justify-content: flex-end; padding: 8px 11px 11px; }
+.workshop-batch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 11px 12px; border: 1px solid #E7D9BE; border-radius: 9px; background: var(--gold-soft); color: #2A2417; font-size: 12px; }
+
+@media (max-width: 680px) {
+  .workshop-grid { grid-template-columns: 1fr 1fr; }
+  .workshop-batch { align-items: flex-start; flex-direction: column; }
+  .workshop-batch .btn { align-self: stretch; }
+}

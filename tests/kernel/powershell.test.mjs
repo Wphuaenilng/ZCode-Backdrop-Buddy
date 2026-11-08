@@ -16,14 +16,15 @@ function scriptFiles(dir = WINDOWS) {
   });
 }
 
-test('powershell: exactly 33 scripts in five groups', () => {
+test('powershell: exactly 34 scripts in six groups', () => {
   const files = scriptFiles().map((file) => path.relative(WINDOWS, file).replace(/\\/g, '/')).sort();
-  assert.equal(files.length, 33);
+  assert.equal(files.length, 34);
   assert.equal(files.filter((file) => file.startsWith('env/')).length, 6);
   assert.equal(files.filter((file) => file.startsWith('host/')).length, 11);
   assert.equal(files.filter((file) => file.startsWith('theme/')).length, 7);
   assert.equal(files.filter((file) => file.startsWith('backup/')).length, 4);
   assert.equal(files.filter((file) => file.startsWith('install/')).length, 5);
+  assert.equal(files.filter((file) => file.startsWith('workshop/')).length, 1);
 });
 
 test('powershell: all scripts parse with Windows PowerShell 5.1', async () => {
@@ -40,6 +41,6 @@ test('powershell: all scripts parse with Windows PowerShell 5.1', async () => {
   ], { timeout: 30000 });
   const result = JSON.parse(String(stdout).trim());
   assert.equal(result.ok, true);
-  assert.equal(result.count, 33);
+  assert.equal(result.count, 34);
   assert.deepEqual(result.bad, []);
 });

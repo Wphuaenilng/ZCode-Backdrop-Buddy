@@ -16,8 +16,8 @@ function countModules(dir) {
   return count;
 }
 
-test('kernel: module count is 101', () => {
+test('kernel: module count is 104', () => {
   // 2026-10-27 早期启动模板、独立注入器与受控预览接口（+3）；2026-11-07 WorkBuddy 原生皮肤契约映射（+1）
-  // 与皮肤契约收割/重映射（+1）。
-  assert.equal(countModules(path.join(ROOT, 'kernel')), 101);
+  // 与皮肤契约收割/重映射（+1）；2026-11-08 Wallpaper Engine 导入：发现/扫描、协议 schema、handler（+3）。
+  assert.equal(countModules(path.join(ROOT, 'kernel')), 104);
 });

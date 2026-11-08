@@ -85,6 +85,7 @@ function mockBridge() {
   const startedAt = Date.now();
   const listeners = new Map();
   const applied = { themeId: null, name: null, params: null, paused: false };
+  const workshopImported = new Set();
 
   const envelope = (id, data) => ({ v: PROTOCOL_VERSION, id, type: 'response', ok: true, data });
   const failure = (id, code, message, retryable = false) => ({
@@ -171,6 +172,32 @@ function mockBridge() {
           applied.paused = false;
           publish();
           return envelope(id, { restored: true });
+        case 'workshop.scan':
+          return envelope(id, {
+            found: true,
+            steamPath: 'C:\\演示\\Steam',
+            source: 'mock',
+            roots: 1,
+            skipped: 1,
+            truncated: false,
+            cap: 300,
+            items: [
+              { id: 'mock-video', title: '演示 · 星夜列车', type: 'video', supported: true, bytes: 42152448, previewUrl: '' },
+              { id: 'mock-scene', title: '演示 · 粒子星云', type: 'scene', supported: false, bytes: 0, previewUrl: '' }
+            ]
+          });
+        case 'workshop.import': {
+          const itemId = params && params.id;
+          if (!itemId) return failure(id, 'BAD_PARAMS', 'id required');
+          if (workshopImported.has(itemId)) {
+            return envelope(id, { duplicate: true, theme: { id: `my-mock-${itemId}`, name: '演示 · 星夜列车', source: 'user' } });
+          }
+          workshopImported.add(itemId);
+          return envelope(id, {
+            imported: true,
+            theme: { id: `my-mock-${itemId}`, name: '演示 · 星夜列车', source: 'user', media: { kind: 'video' }, tags: ['动态'] }
+          });
+        }
         default:
           return failure(id, 'METHOD_NOT_FOUND', `unknown method: ${method}`);
       }

@@ -6,6 +6,7 @@ using System.Text;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using BackdropBuddy.Shell.Infrastructure;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
@@ -37,6 +38,11 @@ namespace BackdropBuddy.Shell
         private string _trayThemeName;
         private bool _minimizeToTray;
         private bool _allowExit;
+        private bool _hidingToTray;
+        private DispatcherTimer _trayHideTimer;
+        // 进托盘前的窗口状态：AnimateToTray 会先置 Minimized，恢复时要从这里回去，
+        // 否则最大化的窗口进托盘再回来会掉成普通尺寸
+        private WindowState _windowStateBeforeTray = WindowState.Normal;
 
         public MainWindow(SplashWindow splash)
         {
@@ -87,8 +93,15 @@ namespace BackdropBuddy.Shell
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+                CancelPendingTrayHide();
+                // 先 Show 再还原：从托盘回来时能吃到系统"从任务栏长出来"的还原动画
                 Show();
+                if (!IsVisible || WindowState == WindowState.Minimized)
+                {
+                    WindowState = _windowStateBeforeTray == WindowState.Maximized
+                        ? WindowState.Maximized
+                        : WindowState.Normal;
+                }
                 Activate();
                 Topmost = true;
                 Topmost = false;
@@ -985,7 +998,7 @@ namespace BackdropBuddy.Shell
             {
                 e.Cancel = true;
                 SaveWindowState();
-                Hide();
+                AnimateToTray();
                 return;
             }
 
@@ -1001,6 +1014,50 @@ namespace BackdropBuddy.Shell
                 _kernel.Dispose();
                 _kernel = null;
             }
+        }
+
+        // 点 X 进托盘：直接 Hide 是"啪一下没了"，整窗透明淡出又会和背后的内容糊成一片。
+        // 借系统最小化动画让窗口本体收进任务栏（托盘就在那里），画面始终不透明、DWM 合成线程渲染；
+        // 动画播完再 Hide 摘掉任务栏按钮，提前 Hide 会把动画掐断。
+        private void AnimateToTray()
+        {
+            if (_hidingToTray) return;
+            _hidingToTray = true;
+            _windowStateBeforeTray = WindowState;
+
+            if (!SystemParameters.ClientAreaAnimation)
+            {
+                // 无动画机器不走 Minimized 预埋：WindowState 还是进托盘前的值，
+                // FinishHideToTray 的 Minimized 前置条件永不成立，必须强制隐藏
+                FinishHideToTray(force: true);
+                return;
+            }
+
+            if (_trayHideTimer == null)
+            {
+                _trayHideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                _trayHideTimer.Tick += (sender, args) => FinishHideToTray();
+            }
+            WindowState = WindowState.Minimized;
+            _trayHideTimer.Start();
+        }
+
+        private void FinishHideToTray(bool force = false)
+        {
+            if (_trayHideTimer != null) _trayHideTimer.Stop();
+            if (!_hidingToTray) return;
+            _hidingToTray = false;
+            // 正常路径：等待期间用户若从任务栏把窗口点了回来，就不该再藏；
+            // force：无动画路径没经过 Minimized，前置条件不适用，直接藏。
+            bool canHide = force || (WindowState == WindowState.Minimized && IsVisible);
+            if (canHide) Hide();
+            Logs.Shell.Write("INFO", canHide ? "window hidden to tray" : "tray hide skipped (window already restored)");
+        }
+
+        private void CancelPendingTrayHide()
+        {
+            if (_trayHideTimer != null) _trayHideTimer.Stop();
+            _hidingToTray = false;
         }
     }
 }

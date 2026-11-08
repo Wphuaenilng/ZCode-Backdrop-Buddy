@@ -6,6 +6,7 @@ import ImportView from './components/ImportView.jsx';
 import SettingsView from './components/SettingsView.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import HostWizard from './components/HostWizard.jsx';
+import WorkshopImportView from './components/WorkshopImportView.jsx';
 import Toast from './components/Toast.jsx';
 import { BUILTINS, isNative } from './data/themes.js';
 import { DEFAULT_PARAMS, TAG_LIST, normalizeParams } from './data/params.js';
@@ -662,6 +663,12 @@ export default function App() {
     setView('console');
   }, []);
 
+  // WE 导入每落一条就刷新列表并切到"我的"；不跳页，用户可以继续批量导入
+  const handleWorkshopImported = useCallback(async () => {
+    await refreshThemes();
+    setFilters((current) => (current.source === 'my' ? current : { ...current, source: 'my' }));
+  }, [refreshThemes]);
+
   const switchView = useCallback((next) => {
     if (next === 'import' && !draft) setDraft(blankDraft());
     if (next === 'settings') setSettingsId(library.selectedId);
@@ -1256,6 +1263,10 @@ export default function App() {
             onSave={saveDraft}
             onCancel={() => { setDraft(null); setView('console'); }}
           />
+        ) : null}
+
+        {view === 'workshop' ? (
+          <WorkshopImportView bridge={bridge} native={native} onImported={handleWorkshopImported} showToast={showToast} />
         ) : null}
 
         {view === 'host' ? (
