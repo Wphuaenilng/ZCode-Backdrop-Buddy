@@ -1,6 +1,6 @@
 import { METHODS, PROTOCOL_VERSION } from '../../shared/protocol/constants.mjs';
 import { EMPTY } from './common.mjs';
-import { themeList, themeGet, themeSave, themeRemove, themeImport, themeExport, themeApply, themeEmpty } from './theme.mjs';
+import { themeList, themeGet, themeStartupPreview, themeSave, themeRemove, themeImport, themeExport, themeApply, themeEmpty } from './theme.mjs';
 import { mediaUrl } from './media.mjs';
 import { startupGet, startupUpdate } from './startup.mjs';
 import { settingsGet, settingsSet } from './settings.mjs';
@@ -19,7 +19,7 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.THEME_LIST]: themeList,
   [METHODS.THEME_GET]: themeGet,
   [METHODS.THEME_SAVE]: themeSave,
-  [METHODS.THEME_STARTUP_PREVIEW]: themeGet,
+  [METHODS.THEME_STARTUP_PREVIEW]: themeStartupPreview,
   [METHODS.THEME_REMOVE]: themeRemove,
   [METHODS.THEME_IMPORT]: themeImport,
   [METHODS.THEME_EXPORT]: themeExport,
@@ -49,6 +49,7 @@ export const METHOD_SCHEMAS = Object.freeze({
   [METHODS.HOST_PROFILE_GET]: hostProfileGet,
   [METHODS.HOST_PROFILE_TEST]: hostProfileBody,
   [METHODS.HOST_PROFILE_SAVE]: hostProfileBody,
+  [METHODS.HOST_PROFILE_REMOVE]: hostUse,
   [METHODS.HOST_AUTOSCAN]: EMPTY,
   [METHODS.HOST_AUTOIMPORT]: hostProfileBody,
   [METHODS.HOST_USE]: hostUse,

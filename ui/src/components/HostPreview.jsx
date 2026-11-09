@@ -6,6 +6,15 @@ export default function HostPreview({ theme, params, paused = false, locked = fa
   const videoRef = useRef(null);
   const visual = themeVisual(theme);
   const mode = params.mode === 'contain' ? 'contain' : params.mode === 'stretch' ? '100% 100%' : 'cover';
+  const objectFit = params.mode === 'contain' ? 'contain' : params.mode === 'stretch' ? 'fill' : 'cover';
+  const position = `${clamp(params.x + params.hpos * 0.3, 0, 100)}% ${params.y}%`;
+  const safe = ['left', 'right', 'center', 'off'].includes(params.safe) ? params.safe : 'auto';
+  const scrim = 'rgba(15, 20, 28, .34)';
+  const safeBackground = safe === 'off'
+    ? 'transparent'
+    : safe === 'center'
+      ? `radial-gradient(circle at 50% 45%, transparent 35%, ${scrim} 100%)`
+      : `linear-gradient(${safe === 'right' ? '270deg' : '90deg'}, ${scrim}, transparent 62%)`;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -21,14 +30,13 @@ export default function HostPreview({ theme, params, paused = false, locked = fa
   }, [paused, visual.video]);
 
   const surfaceStyle = {
-    transform: `scale(${clamp(params.zoom, 100, 220) / 100})`
+    transform: `scale(${clamp(params.zoom, 100, 220) / 100})`,
+    backgroundSize: mode,
+    backgroundPosition: position
   };
 
   if (visual.image) surfaceStyle.backgroundImage = `url("${visual.image}")`;
   else if (visual.bg) surfaceStyle.background = visual.bg;
-
-  surfaceStyle.backgroundSize = mode;
-  surfaceStyle.backgroundPosition = `${params.x}% ${params.y}%`;
 
   const stageStyle = {
     '--panel': (clamp(params.panel, 0, 100) / 100).toFixed(2),
@@ -40,15 +48,24 @@ export default function HostPreview({ theme, params, paused = false, locked = fa
     <div
       className={`host-stage${large ? ' large' : ''}${locked ? ' locked' : ''}`}
       style={stageStyle}
-      data-safe={params.safe === 'auto' ? 'center' : params.safe}
+      data-safe={safe === 'auto' ? 'left' : safe}
       data-task={params.task === 'auto' ? 'ambient' : params.task}
       data-testid={large ? 'import-preview' : 'host-preview'}
     >
       <div className="theme-surface" style={surfaceStyle}>
         {visual.video ? (
-          <video ref={videoRef} src={visual.video} muted loop playsInline autoPlay />
+          <video
+            ref={videoRef}
+            src={visual.video}
+            style={{ objectFit, objectPosition: position }}
+            muted
+            loop
+            playsInline
+            autoPlay
+          />
         ) : null}
       </div>
+      <div className="host-safe-overlay" style={{ background: safeBackground }} data-testid="host-safe-overlay" />
 
       <div className="host-mock">
         <div className="host-side"><i /><i /><i /><i /></div>

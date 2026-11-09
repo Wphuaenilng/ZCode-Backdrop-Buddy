@@ -191,3 +191,12 @@ export function saveUserProfile(dir, raw) {
   fs.renameSync(temp, file);
   return { ok: true, profile: result.profile, path: file };
 }
+
+export function removeUserProfile(dir, id) {
+  const key = String(id || '').toLowerCase();
+  if (!ID_RE.test(key)) return { ok: false, errors: ['宿主 id 不合法'] };
+  const file = path.join(dir, `${key}.json`);
+  if (!fs.existsSync(file)) return { ok: false, errors: ['宿主配置不存在'] };
+  fs.rmSync(file);
+  return { ok: true, path: file };
+}

@@ -44,6 +44,7 @@ export const METHODS = Object.freeze({
   HOST_PROFILE_GET: 'host.profile.get',
   HOST_PROFILE_TEST: 'host.profile.test',
   HOST_PROFILE_SAVE: 'host.profile.save',
+  HOST_PROFILE_REMOVE: 'host.profile.remove',
   HOST_AUTOSCAN: 'host.autoscan',
   HOST_AUTOIMPORT: 'host.autoimport',
   HOST_USE: 'host.use',

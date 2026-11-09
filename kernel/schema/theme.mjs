@@ -15,6 +15,23 @@ export const themeGet = {
   properties: { themeId }
 };
 
+export const themeStartupPreview = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['themeId'],
+  properties: {
+    themeId,
+    startup: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        preset: { type: 'string', enum: ['zcode-pop', 'theme-reveal'] },
+        holdMs: { type: 'integer', minimum: 900, maximum: 3000 }
+      }
+    }
+  }
+};
+
 export const themeSave = {
   type: 'object',
   additionalProperties: false,

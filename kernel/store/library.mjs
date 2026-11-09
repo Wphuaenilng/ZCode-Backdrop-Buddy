@@ -93,7 +93,7 @@ function startupImagePath(dir, value) {
 function resolveStartup(record, dir) {
   const startup = normalizeStartup(record.startup);
   if (startup.media) return { ...startup, media: startupImagePath(dir, startup.media) };
-  if (!startup.enabled) return startup;
+  // 预览即使尚未启用启动动画，也应展示主题缩略图；真实启动仍由 enabled 控制。
   const candidates = [record.media?.thumb, record.media?.kind === 'image' ? record.media.file : null];
   for (const name of candidates) {
     if (!name) continue;
@@ -635,12 +635,14 @@ export function createLibrary({ paths, logger, media, locks }) {
     return statsCache.value;
   }
 
-  function previewStartup(id, { reducedMotion = false } = {}) {
+  function previewStartup(id, { reducedMotion = false, startup: draft } = {}) {
     const record = findRecord(id);
     if (!record) throw new AppError('THEME_NOT_FOUND', `theme not found: ${id}`);
     const startup = resolveStartup(record, themeDir(record));
     const config = normalizeStartupTemplate({
       ...startup,
+      preset: draft?.preset || startup.preset,
+      holdMs: draft?.holdMs ?? startup.holdMs,
       launchId: 'preview',
       themeName: record.name,
       accent: record.params?.accent,

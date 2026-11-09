@@ -3,7 +3,7 @@ import { METHODS } from '../../shared/protocol/constants.mjs';
 import { METHOD_SCHEMAS } from '../schema/methods.mjs';
 import { AppError } from '../protocol/errors.mjs';
 import { inspectHost, pickStart, pickPoll, pickCancel, testProfile } from '../host/wizard.mjs';
-import { saveUserProfile, validateProfile } from '../host/user-profiles.mjs';
+import { removeUserProfile, saveUserProfile, validateProfile } from '../host/user-profiles.mjs';
 import { scanHosts } from '../host/autoscan.mjs';
 import { switchHost } from '../host/switch.mjs';
 import { safeSegment } from '../store/paths.mjs';
@@ -104,5 +104,25 @@ export default function register(registry, ctx) {
     if (ctx.hostRegistry) ctx.hostRegistry.reload();
     ctx.logger?.info('host profile saved', { id: saved.profile.id, path: saved.path });
     return { ok: true, profile: saved.profile, path: saved.path, hosts: hosts() };
+  });
+
+  registry.register(METHODS.HOST_PROFILE_REMOVE, METHOD_SCHEMAS[METHODS.HOST_PROFILE_REMOVE], async (params) => {
+    const key = String(params.id || '').toLowerCase();
+    const target = hosts().find((host) => host.id === key);
+    if (!target || target.source !== 'user') {
+      throw new AppError('HOST_NOT_FOUND', '自定义宿主不存在或不可删除');
+    }
+    if (ctx.hostProfile?.id === key) await switchHost(ctx, 'zcode');
+
+    const removed = removeUserProfile(ctx.paths.hosts, key);
+    if (!removed.ok) throw new AppError('HOST_NOT_FOUND', removed.errors.join('；'));
+    if (ctx.hostRegistry) ctx.hostRegistry.reload();
+
+    const prefs = ctx.config.get();
+    const hostThemes = { ...(prefs.hostThemes || {}) };
+    delete hostThemes[key];
+    ctx.config.set({ hostThemes, ...(prefs.hostId === key ? { hostId: 'zcode' } : {}) });
+    ctx.logger?.info('host profile removed', { id: key, path: removed.path });
+    return { ok: true, id: key, hosts: hosts(), active: ctx.hostProfile ? ctx.hostProfile.id : null };
   });
 }

@@ -62,7 +62,10 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
     let alive = true;
     setPreviewUrl(null);
     setPreviewError('');
-    bridge.request('theme.startup.preview', { themeId }).then((result) => {
+    bridge.request('theme.startup.preview', {
+      themeId,
+      startup: { preset: startup.preset, holdMs: startup.holdMs }
+    }).then((result) => {
       if (!alive) return;
       if (result.ok) setPreviewUrl(result.data?.url || null);
       else setPreviewError(result.error?.message || result.error?.code || '预览生成失败');
@@ -246,9 +249,9 @@ export default function SettingsView({ themes, themeId, params, native, bridge, 
                   </div>
                 </div>
                 <div className="startup-actions">
-                  <button type="button" className="btn light" disabled={!native} onClick={() => { setPreviewKey((value) => value + 1); setPreviewing(true); }} data-testid="preview-theme-startup">预览已保存效果</button>
+                  <button type="button" className="btn light" disabled={!native} onClick={() => { setPreviewKey((value) => value + 1); setPreviewing(true); }} data-testid="preview-theme-startup">预览当前效果</button>
                 </div>
-                <p className="note">主题缩略图会用作背景；没有合适静图时使用深色渐变。预览与宿主使用同一模板，修改后先保存再预览。900ms 后可跳过；宿主未就绪或正文未挂载时最长约 20 秒交还。</p>
+                <p className="note">主题缩略图会用作背景；没有合适静图时使用深色渐变。预览直接使用当前动画设置，无需保存，也不会修改主题。900ms 后可跳过；宿主未就绪或正文未挂载时最长约 20 秒交还。</p>
                 {theme?.builtin ? <p className="note">内置主题的启动配置为只读；可在自己的主题上启用。</p> : null}
               </section>
 
